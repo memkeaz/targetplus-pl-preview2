@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Target Plus P&L — CSV + API + Charts (No-React)</title>
+    <title>Target Plus P&L — CSV + API + Charts + COGS (No-React)</title>
     <style>
       :root{
         --bg:#0b0c10; --card:#121319; --text:#eaf0f6; --muted:#9aa4b2; --accent:#4da3ff; --positive:#2fd37e; --negative:#ff6b6b; --table:#171821;
@@ -47,7 +47,7 @@
   </head>
   <body>
     <div class="header">
-      <div class="logo">Target Plus P&L — CSV + API + Charts</div>
+      <div class="logo">Target Plus P&L — CSV + API + Charts + COGS</div>
       <div class="controls">
         <input id="csvFile" type="file" accept=".csv,text/csv" class="input" />
         <label>Default Fee % <input id="feePct" type="number" class="input number" step="0.01" min="0" max="0.5" value="0.12"></label>
@@ -56,6 +56,7 @@
         <button id="applyDates" class="button">Apply Dates</button>
         <button id="downloadBtn" class="link" title="Download the current By-SKU table as CSV">Download CSV</button>
         <button id="openSettings" class="link">API Settings</button>
+        <button id="openCogs" class="link">COGS Editor</button>
         <span id="status" class="pill">Waiting for CSV / API…</span>
       </div>
     </div>
@@ -67,7 +68,7 @@
           <div class="value" id="kpiRevenue">$0.00</div>
         </div>
         <div class="card kpi" style="grid-column:span 3">
-          <div class="label">Refunds</div>
+          <div className="label">Refunds</div>
           <div class="value" id="kpiRefunds">$0.00</div>
         </div>
         <div class="card kpi" style="grid-column:span 3">
@@ -123,13 +124,13 @@
       </div>
     </div>
 
-    <!-- Modal for API settings -->
+    <!-- Modal: API settings -->
     <div id="settingsModal" class="modal">
       <div class="panel">
         <h3>Target Plus API Settings</h3>
         <p style="color:var(--muted)">
           This is a static page. Live API calls may be blocked by CORS unless your Target Plus endpoint allows it.
-          If Fetch fails, paste the JSON response below (from Postman/Insomnia/export) and click <b>Import JSON</b>.
+          If Fetch fails, paste the JSON response below (from Postman/Insomnia) and click <b>Import JSON</b>.
         </p>
         <label>Base URL</label>
         <input id="apiBase" placeholder="e.g., https://plus.target.com" />
@@ -138,6 +139,7 @@
         <label>Seller / SMS ID</label>
         <input id="apiSeller" placeholder="Your Seller ID" />
         <div class="row">
+          <button id="saveApi" class="link">Save</button>
           <button id="fetchOrders" class="button">Fetch Last 100 Orders</button>
           <span id="apiStatus" class="pill">Idle</span>
         </div>
@@ -150,16 +152,34 @@
       </div>
     </div>
 
+    <!-- Modal: COGS editor -->
+    <div id="cogsModal" class="modal">
+      <div class="panel">
+        <h3>COGS Editor</h3>
+        <p style="color:var(--muted)">Set per-SKU COGS (saved in your browser).</p>
+        <div class="row">
+          <select id="cogsSku" class="select"></select>
+          <input id="cogsValue" type="number" class="input number" step="0.01" min="0" placeholder="COGS per unit" />
+          <button id="saveCogs" class="button">Save COGS</button>
+          <span id="cogsStatus" class="pill">Idle</span>
+        </div>
+        <div style="margin-top:10px; font-size:12px; color:var(--muted)">Tip: COGS overrides apply to all rows for that SKU (CSV + API). They are stored in <code>localStorage</code> and persist on this browser.</div>
+        <div class="actions">
+          <button class="link" id="closeCogs">Close</button>
+        </div>
+      </div>
+    </div>
+
     <script>
-      // --- Utilities ---
+      // --- Utilities & storage ---
       const $ = sel => document.querySelector(sel);
       const fmtUSD = n => (n||0).toLocaleString(undefined,{style:"currency",currency:"USD",maximumFractionDigits:2});
-      const dParse = s => {
-        if (!s) return null;
-        const dt = new Date(s);
-        return isNaN(dt.getTime()) ? null : dt;
+      const dParse = s => { const dt = new Date(s); return isNaN(dt.getTime()) ? null : dt; };
+      const dKey = dt => dt.toISOString().slice(0,10);
+      const ls = {
+        get(k, d){ try{ const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch(e){ return d; } },
+        set(k, v){ localStorage.setItem(k, JSON.stringify(v)); }
       };
-      const dKey = dt => dt.toISOString().slice(0,10); // YYYY-MM-DD
 
       // Tiny CSV parser
       function parseCSV(text){
@@ -168,10 +188,8 @@
         while (i < text.length){
           const c = text[i];
           if (inQuotes){
-            if (c === '"'){
-              if (text[i+1] === '"'){ field += '"'; i++; }
-              else { inQuotes = false; }
-            } else { field += c; }
+            if (c === '"'){ if (text[i+1] === '"'){ field += '"'; i++; } else { inQuotes = false; } }
+            else { field += c; }
           } else {
             if (c === '"'){ inQuotes = true; }
             else if (c === ','){ row.push(field); field = ""; }
@@ -185,15 +203,16 @@
         return rows;
       }
       const toLowerMap = arr => Object.fromEntries(arr.map((h,i)=>[h.trim().toLowerCase(), i]));
-      const num = v => {
-        if (v==null || v==="") return 0;
-        const n = Number(String(v).replace(/[^0-9.\-]/g,""));
-        return isNaN(n) ? 0 : n;
-      };
+      const num = v => { if (v==null || v==="") return 0; const n = Number(String(v).replace(/[^0-9.\-]/g,"")); return isNaN(n) ? 0 : n; };
       const str = v => (v==null ? "" : String(v));
 
+      // Local storage keys
+      const LS_API = "tp_api";
+      const LS_FEE = "tp_fee_pct";
+      const LS_COGS = "tp_cogs_overrides";
+
       // --- Data normalization ---
-      function normalizeCsvRows(rows, feePct){
+      function normalizeCsvRows(rows, feePct, cogsOverrides){
         const [head, ...rest] = rows;
         if (!head) return [];
         const cols = toLowerMap(head);
@@ -210,11 +229,14 @@
           const price = num(get("item_price"));
           const feeCol = get("marketplace_fee");
           const fee = feeCol !== "" ? num(feeCol) : +(price * quantity * feePct).toFixed(2);
+          const sku = str(get("sku"));
+          const cogsCsv = num(get("cogs"));
+          const cogs = (cogsOverrides && sku in cogsOverrides) ? Number(cogsOverrides[sku]) : cogsCsv;
           out.push({
             source: "csv",
             order_id: str(get("order_id")),
             purchase_date: str(get("purchase_date")),
-            sku: str(get("sku")),
+            sku,
             title: str(get("title")),
             quantity: quantity,
             item_price: price,
@@ -223,43 +245,47 @@
             refund_amount: num(get("refund_amount")),
             buyer_state: str(get("buyer_state")),
             marketplace_fee: fee,
-            cogs: num(get("cogs"))
+            cogs: cogs
           });
         });
         return out;
       }
 
-      // Flatten a hypothetical Target Plus order JSON to line rows
-      function flattenOrderJson(o){
+      function flattenOrderJson(o, cogsOverrides){
         const order_id = o.order_id || o.id || o.orderNumber || o.order_number;
         const purchase_date = o.purchase_date || o.createdAt || o.created_at;
         const buyer_state = (o.shipping_address && (o.shipping_address.state || o.shipping_address.region)) || o.buyer_state;
         const status = o.status || "Shipped";
         const lines = Array.isArray(o.lines) ? o.lines : (Array.isArray(o.order_lines) ? o.order_lines : []);
-        const rows = lines.map(li => ({
-          source: "api",
-          order_id,
-          purchase_date,
-          sku: li.sku || li.sellerSku || li.SKU || "",
-          title: li.title || li.name || "",
-          quantity: Number(li.quantity || 1),
-          item_price: num(li.item_price ?? li.price ?? 0),
-          shipping_price: num(li.shipping_price ?? 0),
-          tax: num(li.tax ?? 0),
-          refund_amount: num(li.refund_amount ?? 0),
-          buyer_state,
-          marketplace_fee: num(li.marketplace_fee ?? 0),
-          cogs: num(li.cogs ?? 0),
-          status
-        }));
+        const rows = lines.map(li => {
+          const sku = li.sku || li.sellerSku || li.SKU || "";
+          const cogsLi = num(li.cogs ?? 0);
+          const cogs = (cogsOverrides && sku in cogsOverrides) ? Number(cogsOverrides[sku]) : cogsLi;
+          return {
+            source: "api",
+            order_id,
+            purchase_date,
+            sku,
+            title: li.title || li.name || "",
+            quantity: Number(li.quantity || 1),
+            item_price: num(li.item_price ?? li.price ?? 0),
+            shipping_price: num(li.shipping_price ?? 0),
+            tax: num(li.tax ?? 0),
+            refund_amount: num(li.refund_amount ?? 0),
+            buyer_state,
+            marketplace_fee: num(li.marketplace_fee ?? 0),
+            cogs,
+            status
+          };
+        });
         return rows;
       }
 
-      function normalizeApiPayload(payload){
+      function normalizeApiPayload(payload, cogsOverrides){
         let orders = payload.orders || payload.data || payload;
         if (!Array.isArray(orders)) orders = [orders];
         const out = [];
-        orders.forEach(o => { out.push(...flattenOrderJson(o)); });
+        orders.forEach(o => { out.push(...flattenOrderJson(o, cogsOverrides)); });
         return out;
       }
 
@@ -325,6 +351,7 @@
       let productFilter = "";
       let searchQ = "";
       let chartTime, chartPie;
+      let cogsOverrides = ls.get(LS_COGS, {});
 
       const headers = [
         ["sku","SKU"],
@@ -384,6 +411,11 @@
         const sel = $("#skuSelect");
         const skus = Array.from(new Set(filteredLines.map(r=>r.sku))).sort();
         sel.innerHTML = '<option value="">All products</option>' + skus.map(s=>'<option>'+s+'</option>').join("");
+        // Also populate COGS editor dropdown
+        const csel = $("#cogsSku");
+        if (csel){
+          csel.innerHTML = skus.map(s=>'<option>'+s+'</option>').join("");
+        }
       }
 
       function filteredSorted(){
@@ -425,18 +457,8 @@
         if (chartTime) chartTime.destroy();
         chartTime = new Chart(ctx1, {
           type: 'line',
-          data: {
-            labels,
-            datasets: [
-              { label: 'Revenue', data: rev },
-              { label: 'Gross Profit', data: gp }
-            ]
-          },
-          options: {
-            responsive: true,
-            plugins: { legend: { position: 'bottom' } },
-            scales: { y: { beginAtZero: true } }
-          }
+          data: { labels, datasets: [ { label: 'Revenue', data: rev }, { label: 'Gross Profit', data: gp } ] },
+          options: { responsive: true, plugins: { legend: { position: 'bottom' } }, scales: { y: { beginAtZero: true } } }
         });
 
         // Pie for top SKUs by GP
@@ -445,10 +467,7 @@
         if (chartPie) chartPie.destroy();
         chartPie = new Chart(ctx2, {
           type: 'pie',
-          data: {
-            labels: top.map(r=>r.sku),
-            datasets: [{ data: top.map(r=>+(r.grossProfit.toFixed(2))) }]
-          },
+          data: { labels: top.map(r=>r.sku), datasets: [{ data: top.map(r=>+(r.grossProfit.toFixed(2))) }] },
           options: { responsive: true, plugins: { legend: { position: 'bottom' } } }
         });
       }
@@ -481,7 +500,7 @@
             const text = reader.result;
             const rows = parseCSV(text);
             const feePct = Number($("#feePct").value || 0.12);
-            const lines = normalizeCsvRows(rows, feePct);
+            const lines = normalizeCsvRows(rows, feePct, cogsOverrides);
             allLines = allLines.concat(lines);
             $("#status").textContent = "Loaded " + file.name + " (" + lines.length + " lines)";
             update();
@@ -493,11 +512,15 @@
         reader.readAsText(file);
       });
 
+      // fee percent persist
+      const savedFee = ls.get(LS_FEE, 0.12);
+      $("#feePct").value = savedFee;
       $("#feePct").addEventListener("change", () => {
+        const val = Number($("#feePct").value || 0.12);
+        ls.set(LS_FEE, val);
         if (!allLines.length) return;
-        const feePct = Number($("#feePct").value || 0.12);
-        // Only recompute fees if marketplace_fee was zero (heuristic)
-        allLines = allLines.map(r => ({ ...r, marketplace_fee: r.marketplace_fee ? r.marketplace_fee : +( (r.item_price||0) * (r.quantity||0) * feePct ).toFixed(2) }));
+        // recompute estimated fees for rows with zero fee
+        allLines = allLines.map(r => ({ ...r, marketplace_fee: r.marketplace_fee ? r.marketplace_fee : +( (r.item_price||0) * (r.quantity||0) * val ).toFixed(2) }));
         update();
       });
 
@@ -528,26 +551,32 @@
         URL.revokeObjectURL(url);
       });
 
-      // Modal controls
-      $("#openSettings").addEventListener("click", ()=> $("#settingsModal").style.display = "flex");
+      // Modal controls: API
+      $("#openSettings").addEventListener("click", ()=> {
+        const saved = ls.get(LS_API, {});
+        $("#apiBase").value = saved.base || "";
+        $("#apiToken").value = saved.token || "";
+        $("#apiSeller").value = saved.seller || "";
+        $("#settingsModal").style.display = "flex";
+      });
       $("#closeSettings").addEventListener("click", ()=> $("#settingsModal").style.display = "none");
+      $("#saveApi").addEventListener("click", ()=> {
+        ls.set(LS_API, { base: $("#apiBase").value.trim(), token: $("#apiToken").value.trim(), seller: $("#apiSeller").value.trim() });
+        $("#apiStatus").textContent = "Saved";
+      });
 
-      // Fetch via API (may fail due to CORS; that's okay)
       $("#fetchOrders").addEventListener("click", async () => {
         const base = $("#apiBase").value.trim().replace(/\/$/,"");
         const token = $("#apiToken").value.trim();
         const seller = $("#apiSeller").value.trim();
-        if (!base || !token || !seller) {
-          $("#apiStatus").textContent = "Missing fields";
-          return;
-        }
+        if (!base || !token || !seller) { $("#apiStatus").textContent = "Missing fields"; return; }
         $("#apiStatus").textContent = "Fetching…";
         try{
           const url = base + "/seller_orders-v1/orders?seller_id=" + encodeURIComponent(seller) + "&limit=100";
           const resp = await fetch(url, { headers: { "Authorization": "Bearer " + token, "Content-Type":"application/json" } });
           if (!resp.ok) throw new Error("HTTP " + resp.status);
           const json = await resp.json();
-          const lines = normalizeApiPayload(json);
+          const lines = normalizeApiPayload(json, cogsOverrides);
           allLines = allLines.concat(lines);
           $("#apiStatus").textContent = "Imported " + lines.length + " lines";
           $("#status").textContent = "API import done";
@@ -558,11 +587,10 @@
         }
       });
 
-      // Import pasted JSON
       $("#importJson").addEventListener("click", () => {
         try{
           const json = JSON.parse($("#apiJson").value || "{}");
-          const lines = normalizeApiPayload(json);
+          const lines = normalizeApiPayload(json, cogsOverrides);
           allLines = allLines.concat(lines);
           $("#apiStatus").textContent = "Imported " + lines.length + " lines from JSON";
           $("#status").textContent = "JSON import done";
@@ -573,8 +601,37 @@
         }
       });
 
+      // Modal controls: COGS
+      $("#openCogs").addEventListener("click", ()=> {
+        updateSkuFilter(); // ensure dropdown up-to-date
+        $("#cogsSku").value = $("#cogsSku").options[0] ? $("#cogsSku").options[0].value : "";
+        $("#cogsValue").value = $("#cogsSku").value in cogsOverrides ? cogsOverrides[$("#cogsSku").value] : "";
+        $("#cogsModal").style.display = "flex";
+      });
+      $("#closeCogs").addEventListener("click", ()=> $("#cogsModal").style.display = "none");
+
+      $("#cogsSku").addEventListener("change", () => {
+        const sku = $("#cogsSku").value;
+        $("#cogsValue").value = sku in cogsOverrides ? cogsOverrides[sku] : "";
+      });
+
+      $("#saveCogs").addEventListener("click", () => {
+        const sku = $("#cogsSku").value;
+        const v = Number($("#cogsValue").value || 0);
+        if (!sku) { $("#cogsStatus").textContent = "Choose SKU"; return; }
+        if (v < 0) { $("#cogsStatus").textContent = "Invalid COGS"; return; }
+        cogsOverrides[sku] = v;
+        ls.set(LS_COGS, cogsOverrides);
+        // apply to all lines for that SKU
+        allLines = allLines.map(r => r.sku === sku ? { ...r, cogs: v } : r);
+        $("#cogsStatus").textContent = "Saved";
+        update();
+      });
+
       // Seed with a small sample
       (function seed(){
+        const savedApi = ls.get(LS_API, {});
+        if (savedApi.base) $("#status").textContent = "API settings saved (" + savedApi.base + ")";
         const sample = `order_id,purchase_date,sku,title,quantity,item_price,shipping_price,tax,refund_amount,buyer_state,marketplace_fee,cogs
 TGT-1001,2025-07-01,ABC-123,Widget A,2,25.00,5.00,3.00,0.00,MN,6.00,8.50
 TGT-1001,2025-07-01,XYZ-999,Gadget Z,1,40.00,0.00,2.80,0.00,MN,4.80,18.00
@@ -582,9 +639,8 @@ TGT-1002,2025-07-03,ABC-123,Widget A,1,25.00,5.00,2.50,0.00,CA,3.00,8.50
 TGT-1003,2025-07-04,LMN-456,Thing Q,3,15.00,0.00,3.38,0.00,NY,5.40,6.00
 TGT-1004,2025-07-05,XYZ-999,Gadget Z,1,40.00,0.00,3.20,40.00,TX,4.80,18.00`;
         const rows = parseCSV(sample);
-        allLines = normalizeCsvRows(rows, 0.12);
+        allLines = normalizeCsvRows(rows, Number(ls.get(LS_FEE, 0.12)), cogsOverrides);
         update();
-        $("#status").textContent = "Loaded sample. Upload CSV / use API settings to add data.";
       })();
     </script>
   </body>
