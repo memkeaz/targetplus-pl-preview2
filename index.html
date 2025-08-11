@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Target Plus P&L — CSV Upload (No-React)</title>
+    <title>Target Plus P&L — CSV + API + Charts (No-React)</title>
     <style>
       :root{
         --bg:#0b0c10; --card:#121319; --text:#eaf0f6; --muted:#9aa4b2; --accent:#4da3ff; --positive:#2fd37e; --negative:#ff6b6b; --table:#171821;
@@ -12,7 +12,7 @@
       body{margin:0; font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; background:var(--bg); color:var(--text)}
       .header{display:flex; align-items:center; justify-content:space-between; gap:12px; padding:18px 22px; border-bottom:1px solid #1f2130; flex-wrap:wrap}
       .logo{font-weight:700; letter-spacing:.3px}
-      .container{padding:22px; max-width:1200px; margin:0 auto}
+      .container{padding:22px; max-width:1300px; margin:0 auto}
       .grid{display:grid; grid-template-columns:repeat(12,1fr); gap:18px}
       .card{background:var(--card); border:1px solid #1f2130; border-radius:12px; padding:16px}
       .kpi .label{color:var(--muted); font-size:12px; text-transform:uppercase; letter-spacing:.08em}
@@ -20,6 +20,7 @@
       .controls{display:flex; gap:12px; align-items:center; flex-wrap:wrap}
       .input, .select{background:#0f1017; border:1px solid #25283a; color:var(--text); padding:10px 12px; border-radius:10px}
       .number{width:120px}
+      .date{width:170px}
       .button{background:var(--accent); color:#06203a; font-weight:700; border:none; padding:10px 14px; border-radius:10px; cursor:pointer}
       table{width:100%; border-collapse:separate; border-spacing:0; background:var(--table); border:1px solid #1f2130; border-radius:12px; overflow:hidden}
       th, td{padding:12px 14px; text-align:left; border-bottom:1px solid #1f2130; font-size:14px}
@@ -29,16 +30,33 @@
       .pill{padding:4px 8px; border:1px solid #2a3653; border-radius:999px; color:#a9b4c7}
       .warn{color:#ffb86b}
       .ok{color:var(--positive)}
+      .row{display:flex; gap:12px; flex-wrap:wrap; align-items:center}
+      .section-title{font-size:14px; color:var(--muted); margin-bottom:8px; text-transform:uppercase; letter-spacing:.1em}
+      .modal{position:fixed; inset:0; background:rgba(0,0,0,.6); display:none; align-items:center; justify-content:center; padding:20px}
+      .modal .panel{background:#0f1017; border:1px solid #25283a; border-radius:12px; width:min(900px, 95vw); max-height:90vh; overflow:auto; padding:18px}
+      .modal .panel h3{margin:0 0 10px 0}
+      .modal .panel label{display:block; font-size:12px; color:var(--muted); margin-top:10px}
+      .modal .panel input, .modal .panel textarea{width:100%; background:#0b0c14; color:var(--text); border:1px solid #2a2f45; border-radius:10px; padding:10px}
+      .modal .panel textarea{min-height:160px}
+      .modal .panel .actions{display:flex; gap:10px; justify-content:flex-end; margin-top:12px}
+      .link{background:transparent; border:1px solid #2a3653; color:#a9b4c7; padding:8px 12px; border-radius:10px; cursor:pointer}
+      canvas{background:#0f1017; border:1px solid #1f2130; border-radius:12px; padding:8px}
     </style>
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   </head>
   <body>
     <div class="header">
-      <div class="logo">Target Plus P&L — CSV Upload</div>
+      <div class="logo">Target Plus P&L — CSV + API + Charts</div>
       <div class="controls">
         <input id="csvFile" type="file" accept=".csv,text/csv" class="input" />
         <label>Default Fee % <input id="feePct" type="number" class="input number" step="0.01" min="0" max="0.5" value="0.12"></label>
-        <button id="downloadBtn" class="button" title="Download the current By-SKU table as CSV">Download CSV</button>
-        <span id="status" class="pill">Waiting for CSV…</span>
+        <label>From <input id="dateFrom" type="date" class="input date"></label>
+        <label>To <input id="dateTo" type="date" class="input date"></label>
+        <button id="applyDates" class="button">Apply Dates</button>
+        <button id="downloadBtn" class="link" title="Download the current By-SKU table as CSV">Download CSV</button>
+        <button id="openSettings" class="link">API Settings</button>
+        <span id="status" class="pill">Waiting for CSV / API…</span>
       </div>
     </div>
 
@@ -62,8 +80,19 @@
         </div>
       </div>
 
+      <div class="grid" style="margin-bottom:12px">
+        <div class="card" style="grid-column:span 8">
+          <div class="section-title">Revenue & Gross Profit over time</div>
+          <canvas id="timeChart" height="120"></canvas>
+        </div>
+        <div class="card" style="grid-column:span 4">
+          <div class="section-title">Top SKUs by Gross Profit</div>
+          <canvas id="skuPie" height="120"></canvas>
+        </div>
+      </div>
+
       <div class="card" style="margin-bottom:12px">
-        <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:end">
+        <div class="row">
           <div style="flex:1">
             <label style="color:var(--muted); font-size:12px;">Product</label><br/>
             <select id="skuSelect" class="select"></select>
@@ -94,12 +123,45 @@
       </div>
     </div>
 
+    <!-- Modal for API settings -->
+    <div id="settingsModal" class="modal">
+      <div class="panel">
+        <h3>Target Plus API Settings</h3>
+        <p style="color:var(--muted)">
+          This is a static page. Live API calls may be blocked by CORS unless your Target Plus endpoint allows it.
+          If Fetch fails, paste the JSON response below (from Postman/Insomnia/export) and click <b>Import JSON</b>.
+        </p>
+        <label>Base URL</label>
+        <input id="apiBase" placeholder="e.g., https://plus.target.com" />
+        <label>API Token</label>
+        <input id="apiToken" placeholder="Bearer token" />
+        <label>Seller / SMS ID</label>
+        <input id="apiSeller" placeholder="Your Seller ID" />
+        <div class="row">
+          <button id="fetchOrders" class="button">Fetch Last 100 Orders</button>
+          <span id="apiStatus" class="pill">Idle</span>
+        </div>
+        <label>Or paste orders JSON</label>
+        <textarea id="apiJson" placeholder='{"orders":[ ... ]}'></textarea>
+        <div class="actions">
+          <button class="link" id="closeSettings">Close</button>
+          <button class="button" id="importJson">Import JSON</button>
+        </div>
+      </div>
+    </div>
+
     <script>
       // --- Utilities ---
       const $ = sel => document.querySelector(sel);
       const fmtUSD = n => (n||0).toLocaleString(undefined,{style:"currency",currency:"USD",maximumFractionDigits:2});
+      const dParse = s => {
+        if (!s) return null;
+        const dt = new Date(s);
+        return isNaN(dt.getTime()) ? null : dt;
+      };
+      const dKey = dt => dt.toISOString().slice(0,10); // YYYY-MM-DD
 
-      // Very small CSV parser with quote support
+      // Tiny CSV parser
       function parseCSV(text){
         const rows = [];
         let row = [], field = "", i = 0, inQuotes = false;
@@ -109,14 +171,12 @@
             if (c === '"'){
               if (text[i+1] === '"'){ field += '"'; i++; }
               else { inQuotes = false; }
-            } else {
-              field += c;
-            }
+            } else { field += c; }
           } else {
             if (c === '"'){ inQuotes = true; }
             else if (c === ','){ row.push(field); field = ""; }
             else if (c === '\n'){ rows.push(row.concat(field)); row = []; field = ""; }
-            else if (c === '\r'){ /* ignore CR */ }
+            else if (c === '\r'){}
             else { field += c; }
           }
           i++;
@@ -124,11 +184,86 @@
         if (field.length || row.length) rows.push(row.concat(field));
         return rows;
       }
+      const toLowerMap = arr => Object.fromEntries(arr.map((h,i)=>[h.trim().toLowerCase(), i]));
+      const num = v => {
+        if (v==null || v==="") return 0;
+        const n = Number(String(v).replace(/[^0-9.\-]/g,""));
+        return isNaN(n) ? 0 : n;
+      };
+      const str = v => (v==null ? "" : String(v));
 
-      function toLowerMap(arr){ const m = {}; arr.forEach((h,i)=> m[h.trim().toLowerCase()] = i); return m; }
-      function num(v){ if (v==null || v==="") return 0; const n = Number(String(v).replace(/[^0-9.\-]/g,"")); return isNaN(n)?0:n; }
-      function str(v){ return (v==null) ? "" : String(v); }
+      // --- Data normalization ---
+      function normalizeCsvRows(rows, feePct){
+        const [head, ...rest] = rows;
+        if (!head) return [];
+        const cols = toLowerMap(head);
+        showColumnsHint(cols);
 
+        const out = [];
+        rest.forEach(arr => {
+          if (!arr || !arr.length) return;
+          const get = name => {
+            const i = cols[name];
+            return (typeof i === "number") ? arr[i] : "";
+          };
+          const quantity = num(get("quantity")||1);
+          const price = num(get("item_price"));
+          const feeCol = get("marketplace_fee");
+          const fee = feeCol !== "" ? num(feeCol) : +(price * quantity * feePct).toFixed(2);
+          out.push({
+            source: "csv",
+            order_id: str(get("order_id")),
+            purchase_date: str(get("purchase_date")),
+            sku: str(get("sku")),
+            title: str(get("title")),
+            quantity: quantity,
+            item_price: price,
+            shipping_price: num(get("shipping_price")),
+            tax: num(get("tax")),
+            refund_amount: num(get("refund_amount")),
+            buyer_state: str(get("buyer_state")),
+            marketplace_fee: fee,
+            cogs: num(get("cogs"))
+          });
+        });
+        return out;
+      }
+
+      // Flatten a hypothetical Target Plus order JSON to line rows
+      function flattenOrderJson(o){
+        const order_id = o.order_id || o.id || o.orderNumber || o.order_number;
+        const purchase_date = o.purchase_date || o.createdAt || o.created_at;
+        const buyer_state = (o.shipping_address && (o.shipping_address.state || o.shipping_address.region)) || o.buyer_state;
+        const status = o.status || "Shipped";
+        const lines = Array.isArray(o.lines) ? o.lines : (Array.isArray(o.order_lines) ? o.order_lines : []);
+        const rows = lines.map(li => ({
+          source: "api",
+          order_id,
+          purchase_date,
+          sku: li.sku || li.sellerSku || li.SKU || "",
+          title: li.title || li.name || "",
+          quantity: Number(li.quantity || 1),
+          item_price: num(li.item_price ?? li.price ?? 0),
+          shipping_price: num(li.shipping_price ?? 0),
+          tax: num(li.tax ?? 0),
+          refund_amount: num(li.refund_amount ?? 0),
+          buyer_state,
+          marketplace_fee: num(li.marketplace_fee ?? 0),
+          cogs: num(li.cogs ?? 0),
+          status
+        }));
+        return rows;
+      }
+
+      function normalizeApiPayload(payload){
+        let orders = payload.orders || payload.data || payload;
+        if (!Array.isArray(orders)) orders = [orders];
+        const out = [];
+        orders.forEach(o => { out.push(...flattenOrderJson(o)); });
+        return out;
+      }
+
+      // Aggregations
       function groupBySku(rows){
         const map = new Map();
         rows.forEach(r => {
@@ -149,24 +284,47 @@
         });
       }
 
-      function computeTotals(bySku){
-        const revenue = bySku.reduce((s,r)=>s+r.revenue,0);
-        const refunds = bySku.reduce((s,r)=>s+r.refunds,0);
-        const fees = bySku.reduce((s,r)=>s+r.fees,0);
-        const cogs = bySku.reduce((s,r)=>s+r.cogsTotal,0);
+      function totals(rows){
+        const revenue = rows.reduce((s,r)=>s+r.revenue,0);
+        const refunds = rows.reduce((s,r)=>s+r.refunds,0);
+        const fees = rows.reduce((s,r)=>s+r.fees,0);
+        const cogs = rows.reduce((s,r)=>s+r.cogsTotal,0);
         const net = revenue - refunds;
         const gp = net - fees - cogs;
         const margin = net ? (gp / net) * 100 : 0;
         return { revenue, refunds, fees, cogs, gp, margin };
       }
 
+      function groupByDate(rows){
+        const byDate = new Map();
+        rows.forEach(r => {
+          const dt = dParse(r.purchase_date);
+          if (!dt) return;
+          const key = dKey(dt);
+          const cur = byDate.get(key) || { revenue:0, refunds:0, fees:0, cogs:0 };
+          cur.revenue += (r.item_price||0) * (r.quantity||0);
+          cur.refunds += (r.refund_amount||0);
+          cur.fees += (r.marketplace_fee||0);
+          cur.cogs += (r.cogs||0) * (r.quantity||0);
+          byDate.set(key, cur);
+        });
+        const arr = Array.from(byDate.entries()).map(([date, v]) => {
+          const net = v.revenue - v.refunds;
+          const gp = net - v.fees - v.cogs;
+          return { date, revenue:v.revenue, gp };
+        }).sort((a,b)=>a.date.localeCompare(b.date));
+        return arr;
+      }
+
       // --- State ---
-      let allLines = [];   // raw normalized lines
+      let allLines = [];   // raw normalized lines (csv+api)
+      let filteredLines = []; // lines after date filtering
       let bySku = [];      // aggregated
       let sortKey = "grossProfit";
       let sortDir = "desc";
       let productFilter = "";
       let searchQ = "";
+      let chartTime, chartPie;
 
       const headers = [
         ["sku","SKU"],
@@ -224,7 +382,7 @@
 
       function updateSkuFilter(){
         const sel = $("#skuSelect");
-        const skus = Array.from(new Set(allLines.map(r=>r.sku))).sort();
+        const skus = Array.from(new Set(filteredLines.map(r=>r.sku))).sort();
         sel.innerHTML = '<option value="">All products</option>' + skus.map(s=>'<option>'+s+'</option>').join("");
       }
 
@@ -244,55 +402,75 @@
         return rows;
       }
 
-      function update(){
-        const rows = filteredSorted();
-        renderTable(rows);
-        updateKPIs(computeTotals(rows));
+      function applyDateFilter(){
+        const f = $("#dateFrom").value ? new Date($("#dateFrom").value + "T00:00:00") : null;
+        const t = $("#dateTo").value ? new Date($("#dateTo").value + "T23:59:59") : null;
+        filteredLines = allLines.filter(r => {
+          const dt = dParse(r.purchase_date);
+          if (!dt) return true;
+          if (f && dt < f) return false;
+          if (t && dt > t) return false;
+          return true;
+        });
+      }
+
+      function updateCharts(rows){
+        const series = groupByDate(filteredLines);
+        const labels = series.map(s=>s.date);
+        const rev = series.map(s=>+(s.revenue.toFixed(2)));
+        const gp = series.map(s=>+(s.gp.toFixed(2)));
+
+        // Time chart
+        const ctx1 = document.getElementById('timeChart').getContext('2d');
+        if (chartTime) chartTime.destroy();
+        chartTime = new Chart(ctx1, {
+          type: 'line',
+          data: {
+            labels,
+            datasets: [
+              { label: 'Revenue', data: rev },
+              { label: 'Gross Profit', data: gp }
+            ]
+          },
+          options: {
+            responsive: true,
+            plugins: { legend: { position: 'bottom' } },
+            scales: { y: { beginAtZero: true } }
+          }
+        });
+
+        // Pie for top SKUs by GP
+        const top = [...rows].sort((a,b)=>b.grossProfit - a.grossProfit).slice(0,6);
+        const ctx2 = document.getElementById('skuPie').getContext('2d');
+        if (chartPie) chartPie.destroy();
+        chartPie = new Chart(ctx2, {
+          type: 'pie',
+          data: {
+            labels: top.map(r=>r.sku),
+            datasets: [{ data: top.map(r=>+(r.grossProfit.toFixed(2))) }]
+          },
+          options: { responsive: true, plugins: { legend: { position: 'bottom' } } }
+        });
       }
 
       function showColumnsHint(cols){
         const need = ["order_id","purchase_date","sku","title","quantity","item_price","shipping_price","tax","refund_amount","buyer_state"];
-        const opt = ["marketplace_fee","cogs"];
-        const missing = need.filter(c => !(c in colsLower));
+        const missing = need.filter(c => !(c in cols));
         $("#columnsHint").textContent = missing.length ? "Missing columns: " + missing.join(", ") + " (we'll still import what we can)" : "All key columns detected";
         $("#columnsHint").className = missing.length ? "warn" : "ok";
       }
 
-      function normalizeRows(rows, feePct){
-        const [head, ...rest] = rows;
-        const colsLower = toLowerMap(head);
-        showColumnsHint(colsLower);
-
-        const out = [];
-        rest.forEach(arr => {
-          if (!arr || !arr.length) return;
-          const get = name => {
-            const i = colsLower[name];
-            return (typeof i === "number") ? arr[i] : "";
-          };
-          const quantity = num(get("quantity")||1);
-          const price = num(get("item_price"));
-          const feeCol = get("marketplace_fee");
-          const fee = feeCol !== "" ? num(feeCol) : +(price * quantity * feePct).toFixed(2);
-          out.push({
-            order_id: str(get("order_id")),
-            purchase_date: str(get("purchase_date")),
-            sku: str(get("sku")),
-            title: str(get("title")),
-            quantity: quantity,
-            item_price: price,
-            shipping_price: num(get("shipping_price")),
-            tax: num(get("tax")),
-            refund_amount: num(get("refund_amount")),
-            buyer_state: str(get("buyer_state")),
-            marketplace_fee: fee,
-            cogs: num(get("cogs"))
-          });
-        });
-        return out;
+      function update(){
+        applyDateFilter();
+        bySku = groupBySku(filteredLines);
+        const rows = filteredSorted();
+        renderTable(rows);
+        updateKPIs(totals(rows));
+        updateSkuFilter();
+        updateCharts(rows);
       }
 
-      // --- CSV Upload handling ---
+      // --- Event wiring ---
       $("#csvFile").addEventListener("change", (e) => {
         const file = e.target.files && e.target.files[0];
         if (!file) return;
@@ -303,11 +481,10 @@
             const text = reader.result;
             const rows = parseCSV(text);
             const feePct = Number($("#feePct").value || 0.12);
-            allLines = normalizeRows(rows, feePct);
-            bySku = groupBySku(allLines);
-            updateSkuFilter();
+            const lines = normalizeCsvRows(rows, feePct);
+            allLines = allLines.concat(lines);
+            $("#status").textContent = "Loaded " + file.name + " (" + lines.length + " lines)";
             update();
-            $("#status").textContent = "Loaded " + file.name;
           }catch(err){
             console.error(err);
             $("#status").textContent = "Error reading file. See console.";
@@ -318,19 +495,20 @@
 
       $("#feePct").addEventListener("change", () => {
         if (!allLines.length) return;
-        // Recompute fees if they were estimated (we can't know which came from CSV, so recompute all estimates)
         const feePct = Number($("#feePct").value || 0.12);
-        allLines = allLines.map(r => ({ ...r, marketplace_fee: +( (r.item_price||0) * (r.quantity||0) * feePct ).toFixed(2) }));
-        bySku = groupBySku(allLines);
+        // Only recompute fees if marketplace_fee was zero (heuristic)
+        allLines = allLines.map(r => ({ ...r, marketplace_fee: r.marketplace_fee ? r.marketplace_fee : +( (r.item_price||0) * (r.quantity||0) * feePct ).toFixed(2) }));
         update();
       });
 
+      $("#applyDates").addEventListener("click", update);
       $("#skuSelect").addEventListener("change", (e) => { productFilter = e.target.value; update(); });
       $("#searchInput").addEventListener("input", (e) => { searchQ = e.target.value; update(); });
       $("#resetBtn").addEventListener("click", () => {
         $("#skuSelect").value = ""; productFilter = "";
         $("#searchInput").value = ""; searchQ = "";
         sortKey = "grossProfit"; sortDir = "desc";
+        $("#dateFrom").value = ""; $("#dateTo").value = "";
         update();
       });
 
@@ -350,17 +528,63 @@
         URL.revokeObjectURL(url);
       });
 
-      // Seed with a tiny sample so the UI isn't empty
+      // Modal controls
+      $("#openSettings").addEventListener("click", ()=> $("#settingsModal").style.display = "flex");
+      $("#closeSettings").addEventListener("click", ()=> $("#settingsModal").style.display = "none");
+
+      // Fetch via API (may fail due to CORS; that's okay)
+      $("#fetchOrders").addEventListener("click", async () => {
+        const base = $("#apiBase").value.trim().replace(/\/$/,"");
+        const token = $("#apiToken").value.trim();
+        const seller = $("#apiSeller").value.trim();
+        if (!base || !token || !seller) {
+          $("#apiStatus").textContent = "Missing fields";
+          return;
+        }
+        $("#apiStatus").textContent = "Fetching…";
+        try{
+          const url = base + "/seller_orders-v1/orders?seller_id=" + encodeURIComponent(seller) + "&limit=100";
+          const resp = await fetch(url, { headers: { "Authorization": "Bearer " + token, "Content-Type":"application/json" } });
+          if (!resp.ok) throw new Error("HTTP " + resp.status);
+          const json = await resp.json();
+          const lines = normalizeApiPayload(json);
+          allLines = allLines.concat(lines);
+          $("#apiStatus").textContent = "Imported " + lines.length + " lines";
+          $("#status").textContent = "API import done";
+          update();
+        }catch(err){
+          console.error(err);
+          $("#apiStatus").textContent = "Fetch failed (likely CORS). Paste JSON below.";
+        }
+      });
+
+      // Import pasted JSON
+      $("#importJson").addEventListener("click", () => {
+        try{
+          const json = JSON.parse($("#apiJson").value || "{}");
+          const lines = normalizeApiPayload(json);
+          allLines = allLines.concat(lines);
+          $("#apiStatus").textContent = "Imported " + lines.length + " lines from JSON";
+          $("#status").textContent = "JSON import done";
+          update();
+        }catch(err){
+          console.error(err);
+          $("#apiStatus").textContent = "Invalid JSON";
+        }
+      });
+
+      // Seed with a small sample
       (function seed(){
         const sample = `order_id,purchase_date,sku,title,quantity,item_price,shipping_price,tax,refund_amount,buyer_state,marketplace_fee,cogs
 TGT-1001,2025-07-01,ABC-123,Widget A,2,25.00,5.00,3.00,0.00,MN,6.00,8.50
-TGT-1001,2025-07-01,XYZ-999,Gadget Z,1,40.00,0.00,2.80,0.00,MN,4.80,18.00`;
+TGT-1001,2025-07-01,XYZ-999,Gadget Z,1,40.00,0.00,2.80,0.00,MN,4.80,18.00
+TGT-1002,2025-07-03,ABC-123,Widget A,1,25.00,5.00,2.50,0.00,CA,3.00,8.50
+TGT-1003,2025-07-04,LMN-456,Thing Q,3,15.00,0.00,3.38,0.00,NY,5.40,6.00
+TGT-1004,2025-07-05,XYZ-999,Gadget Z,1,40.00,0.00,3.20,40.00,TX,4.80,18.00`;
         const rows = parseCSV(sample);
-        allLines = normalizeRows(rows, Number($("#feePct").value || 0.12));
-        bySku = groupBySku(allLines);
-        updateSkuFilter();
+        allLines = normalizeCsvRows(rows, 0.12);
         update();
-        $("#status").textContent = "Loaded sample. Upload your CSV to replace.";
+        $("#status").textContent = "Loaded sample. Upload CSV / use API settings to add data.";
       })();
     </script>
   </body>
