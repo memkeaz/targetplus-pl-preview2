@@ -1,0 +1,203 @@
+\
+(() => {
+  const { useState, useMemo, useEffect } = React;
+
+  // Sample data mirrored from the Python app's sample CSV
+  const SAMPLE = [
+    { order_id:"TGT-1001", purchase_date:"2025-07-01", sku:"ABC-123", title:"Widget A", quantity:2, item_price:25.00, shipping_price:5.00, tax:3.00, refund_amount:0.00, buyer_state:"MN", marketplace_fee:6.00, cogs:8.50 },
+    { order_id:"TGT-1001", purchase_date:"2025-07-01", sku:"XYZ-999", title:"Gadget Z", quantity:1, item_price:40.00, shipping_price:0.00, tax:2.80, refund_amount:0.00, buyer_state:"MN", marketplace_fee:4.80, cogs:18.00 },
+    { order_id:"TGT-1002", purchase_date:"2025-07-03", sku:"ABC-123", title:"Widget A", quantity:1, item_price:25.00, shipping_price:5.00, tax:2.50, refund_amount:0.00, buyer_state:"CA", marketplace_fee:3.00, cogs:8.50 },
+    { order_id:"TGT-1003", purchase_date:"2025-07-04", sku:"LMN-456", title:"Thing Q", quantity:3, item_price:15.00, shipping_price:0.00, tax:3.38, refund_amount:0.00, buyer_state:"NY", marketplace_fee:5.40, cogs:6.00 },
+    { order_id:"TGT-1004", purchase_date:"2025-07-05", sku:"XYZ-999", title:"Gadget Z", quantity:1, item_price:40.00, shipping_price:0.00, tax:3.20, refund_amount:40.00, buyer_state:"TX", marketplace_fee:4.80, cogs:18.00 },
+  ];
+
+  function toCurrency(n) {
+    return n.toLocaleString(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 2 });
+  }
+
+  function groupBySku(rows){
+    const map = new Map();
+    rows.forEach(r => {
+      const k = r.sku;
+      const cur = map.get(k) || { sku:k, title:r.title, units:0, revenue:0, refunds:0, fees:0, cogsTotal:0 };
+      cur.units += Number(r.quantity || 0);
+      cur.revenue += Number(r.item_price || 0) * Number(r.quantity || 0);
+      cur.refunds += Number(r.refund_amount || 0);
+      cur.fees += Number(r.marketplace_fee || 0);
+      cur.cogsTotal += Number(r.cogs || 0) * Number(r.quantity || 0);
+      map.set(k, cur);
+    });
+    return Array.from(map.values()).map(x => {
+      const netRev = x.revenue - x.refunds;
+      const gp = netRev - x.fees - x.cogsTotal;
+      const margin = netRev ? (gp / netRev) * 100 : 0;
+      return { ...x, grossProfit: gp, margin };
+    });
+  }
+
+  function computeTotals(bySku){
+    const revenue = bySku.reduce((s,r)=>s+r.revenue,0);
+    const refunds = bySku.reduce((s,r)=>s+r.refunds,0);
+    const fees = bySku.reduce((s,r)=>s+r.fees,0);
+    const cogs = bySku.reduce((s,r)=>s+r.cogsTotal,0);
+    const net = revenue - refunds;
+    const gp = net - fees - cogs;
+    const margin = net ? (gp / net) * 100 : 0;
+    return { revenue, refunds, fees, cogs, gp, margin };
+  }
+
+  function useSort(data, initial = { key: "grossProfit", dir: "desc" }){
+    const [sort, setSort] = React.useState(initial);
+    const sorted = useMemo(() => {
+      const arr = [...data];
+      arr.sort((a,b) => {
+        const av = a[sort.key], bv = b[sort.key];
+        if (av < bv) return sort.dir === "asc" ? -1 : 1;
+        if (av > bv) return sort.dir === "asc" ? 1 : -1;
+        return 0;
+      });
+      return arr;
+    }, [data, sort]);
+    const onHeader = (key) => {
+      setSort(prev => prev.key === key ? { key, dir: prev.dir === "asc" ? "desc" : "asc" } : { key, dir: "asc" });
+    };
+    return { sort, sorted, onHeader };
+  }
+
+  function KPI({ label, value, delta, positive }){
+    return React.createElement("div", { className:"card kpi" },
+      React.createElement("div", { className:"label" }, label),
+      React.createElement("div", { className:"value" }, value),
+      delta != null && React.createElement("div", { className:"delta", style:{ color: positive ? "var(--positive)" : "var(--negative)" }}, delta)
+    );
+  }
+
+  function Filters({ products, onFilter }){
+    const [sku, setSku] = React.useState("");
+    const [q, setQ] = React.useState("");
+
+    useEffect(()=>{
+      onFilter({ sku, q });
+    }, [sku, q]);
+
+    return React.createElement("div", { className:"card filters" },
+      React.createElement("div", { style:{ flex:1 } },
+        React.createElement("label", { className:"label" }, "Product"),
+        React.createElement("select", { className:"select", value:sku, onChange:e=>setSku(e.target.value) },
+          React.createElement("option", { value:"" }, "All products"),
+          products.map(p => React.createElement("option", { key:p, value:p }, p))
+        )
+      ),
+      React.createElement("div", { style:{ flex:2 } },
+        React.createElement("label", { className:"label" }, "Search (SKU/Title)"),
+        React.createElement("input", { className:"input", placeholder:"Type to filter…", value:q, onChange:e=>setQ(e.target.value) })
+      ),
+      React.createElement("div", null,
+        React.createElement("button", { className:"button", onClick:() => { setSku(""); setQ(""); } }, "Reset")
+      )
+    );
+  }
+
+  function Table({ rows, sort, onHeader }){
+    const headers = [
+      ["sku","SKU"],
+      ["title","Title"],
+      ["units","Units"],
+      ["revenue","Revenue"],
+      ["refunds","Refunds"],
+      ["fees","Fees"],
+      ["cogsTotal","COGS (total)"],
+      ["grossProfit","Gross Profit"],
+      ["margin","Margin %"],
+    ];
+    return React.createElement("table", { className:"table" },
+      React.createElement("thead", null,
+        React.createElement("tr", null, headers.map(([key,label]) =>
+          React.createElement("th", { key:key, onClick:()=>onHeader(key) },
+            label, " ", sort.key === key ? (sort.dir === "asc" ? "▲" : "▼") : ""
+          )
+        ))
+      ),
+      React.createElement("tbody", null,
+        rows.map((r, i) => React.createElement("tr", { key:r.sku + i },
+          React.createElement("td", null, r.sku),
+          React.createElement("td", null, r.title || "—"),
+          React.createElement("td", null, r.units),
+          React.createElement("td", null, toCurrency(r.revenue)),
+          React.createElement("td", null, toCurrency(r.refunds)),
+          React.createElement("td", null, toCurrency(r.fees)),
+          React.createElement("td", null, toCurrency(r.cogsTotal)),
+          React.createElement("td", null, toCurrency(r.grossProfit)),
+          React.createElement("td", null, r.margin.toFixed(2))
+        ))
+      )
+    );
+  }
+
+  function App(){
+    const bySku = useMemo(() => groupBySku(SAMPLE), []);
+    const productList = useMemo(() => Array.from(new Set(SAMPLE.map(r=>r.sku))), []);
+
+    const [filter, setFilter] = React.useState({ sku:"", q:"" });
+    const filtered = useMemo(() => {
+      return bySku.filter(r => {
+        const okSku = filter.sku ? r.sku === filter.sku : true;
+        const hay = (r.sku + " " + (r.title||"")).toLowerCase();
+        const okQ = filter.q ? hay.includes(filter.q.toLowerCase()) : true;
+        return okSku && okQ;
+      });
+    }, [bySku, filter]);
+
+    const totals = useMemo(() => computeTotals(filtered), [filtered]);
+    const { sort, sorted, onHeader } = useSort(filtered);
+
+    function downloadCSV(){
+      const cols = ["SKU","Title","Units","Revenue","Refunds","Fees","COGS (total)","Gross Profit","Margin %"];
+      const toRow = r => [r.sku, r.title||"", r.units, r.revenue, r.refunds, r.fees, r.cogsTotal, r.grossProfit, r.margin.toFixed(2)];
+      const lines = [cols.join(","), ...sorted.map(toRow).map(arr => arr.join(","))].join("\n");
+      const blob = new Blob([lines], { type: "text/csv;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = "pnl_by_sku_preview.csv"; a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    return React.createElement(React.Fragment, null,
+      React.createElement("div", { className:"header" },
+        React.createElement("div", { className:"logo" }, "Target Plus P&L Tracker"),
+        React.createElement("div", { className:"right" },
+          React.createElement("span", { className:"badge" }, "React Preview"),
+          React.createElement("button", { className:"download", onClick:downloadCSV }, "Download CSV")
+        )
+      ),
+      React.createElement("div", { className:"container" },
+        React.createElement("div", { className:"grid", style:{ marginBottom: 12 } },
+          React.createElement("div", { className:"card", style:{ gridColumn:"span 3" } },
+            React.createElement(KPI, { label:"Revenue", value: toCurrency(totals.revenue) })
+          ),
+          React.createElement("div", { className:"card", style:{ gridColumn:"span 3" } },
+            React.createElement(KPI, { label:"Refunds", value: toCurrency(totals.refunds) })
+          ),
+          React.createElement("div", { className:"card", style:{ gridColumn:"span 3" } },
+            React.createElement(KPI, { label:"Fees", value: toCurrency(totals.fees) })
+          ),
+          React.createElement("div", { className:"card", style:{ gridColumn:"span 3" } },
+            React.createElement(KPI, { label:"Gross Profit", value: toCurrency(totals.gp), delta: totals.margin.toFixed(2) + "% margin", positive: totals.gp >= 0 })
+          )
+        ),
+        React.createElement("div", { className:"card", style:{ marginBottom: 12 } },
+          React.createElement(Filters, { products: productList, onFilter:setFilter })
+        ),
+        React.createElement("div", { className:"card" },
+          React.createElement(Table, { rows: sorted, sort, onHeader })
+        ),
+        React.createElement("div", { className:"footer" },
+          React.createElement("div", null, "Static preview with sample data. Ready to wire to your CSV/API.")
+        )
+      )
+    );
+  }
+
+  const root = ReactDOM.createRoot(document.getElementById("root"));
+  root.render(React.createElement(App));
+})();
