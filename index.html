@@ -1,647 +1,916 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Target Plus P&L — CSV + API + Charts + COGS (No-React)</title>
-    <style>
-      :root{
-        --bg:#0b0c10; --card:#121319; --text:#eaf0f6; --muted:#9aa4b2; --accent:#4da3ff; --positive:#2fd37e; --negative:#ff6b6b; --table:#171821;
-      }
-      *{box-sizing:border-box}
-      body{margin:0; font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; background:var(--bg); color:var(--text)}
-      .header{display:flex; align-items:center; justify-content:space-between; gap:12px; padding:18px 22px; border-bottom:1px solid #1f2130; flex-wrap:wrap}
-      .logo{font-weight:700; letter-spacing:.3px}
-      .container{padding:22px; max-width:1300px; margin:0 auto}
-      .grid{display:grid; grid-template-columns:repeat(12,1fr); gap:18px}
-      .card{background:var(--card); border:1px solid #1f2130; border-radius:12px; padding:16px}
-      .kpi .label{color:var(--muted); font-size:12px; text-transform:uppercase; letter-spacing:.08em}
-      .kpi .value{font-size:24px; font-weight:700}
-      .controls{display:flex; gap:12px; align-items:center; flex-wrap:wrap}
-      .input, .select{background:#0f1017; border:1px solid #25283a; color:var(--text); padding:10px 12px; border-radius:10px}
-      .number{width:120px}
-      .date{width:170px}
-      .button{background:var(--accent); color:#06203a; font-weight:700; border:none; padding:10px 14px; border-radius:10px; cursor:pointer}
-      table{width:100%; border-collapse:separate; border-spacing:0; background:var(--table); border:1px solid #1f2130; border-radius:12px; overflow:hidden}
-      th, td{padding:12px 14px; text-align:left; border-bottom:1px solid #1f2130; font-size:14px}
-      th{color:var(--muted); cursor:pointer; user-select:none; white-space:nowrap}
-      tr:hover td{background:#151726}
-      .footer{display:flex; justify-content:space-between; align-items:center; color:var(--muted); font-size:12px; padding-top:8px}
-      .pill{padding:4px 8px; border:1px solid #2a3653; border-radius:999px; color:#a9b4c7}
-      .warn{color:#ffb86b}
-      .ok{color:var(--positive)}
-      .row{display:flex; gap:12px; flex-wrap:wrap; align-items:center}
-      .section-title{font-size:14px; color:var(--muted); margin-bottom:8px; text-transform:uppercase; letter-spacing:.1em}
-      .modal{position:fixed; inset:0; background:rgba(0,0,0,.6); display:none; align-items:center; justify-content:center; padding:20px}
-      .modal .panel{background:#0f1017; border:1px solid #25283a; border-radius:12px; width:min(900px, 95vw); max-height:90vh; overflow:auto; padding:18px}
-      .modal .panel h3{margin:0 0 10px 0}
-      .modal .panel label{display:block; font-size:12px; color:var(--muted); margin-top:10px}
-      .modal .panel input, .modal .panel textarea{width:100%; background:#0b0c14; color:var(--text); border:1px solid #2a2f45; border-radius:10px; padding:10px}
-      .modal .panel textarea{min-height:160px}
-      .modal .panel .actions{display:flex; gap:10px; justify-content:flex-end; margin-top:12px}
-      .link{background:transparent; border:1px solid #2a3653; color:#a9b4c7; padding:8px 12px; border-radius:10px; cursor:pointer}
-      canvas{background:#0f1017; border:1px solid #1f2130; border-radius:12px; padding:8px}
-    </style>
-    <!-- Chart.js CDN -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  </head>
-  <body>
-    <div class="header">
-      <div class="logo">Target Plus P&L — CSV + API + Charts + COGS</div>
-      <div class="controls">
-        <input id="csvFile" type="file" accept=".csv,text/csv" class="input" />
-        <label>Default Fee % <input id="feePct" type="number" class="input number" step="0.01" min="0" max="0.5" value="0.12"></label>
-        <label>From <input id="dateFrom" type="date" class="input date"></label>
-        <label>To <input id="dateTo" type="date" class="input date"></label>
-        <button id="applyDates" class="button">Apply Dates</button>
-        <button id="downloadBtn" class="link" title="Download the current By-SKU table as CSV">Download CSV</button>
-        <button id="openSettings" class="link">API Settings</button>
-        <button id="openCogs" class="link">COGS Editor</button>
-        <span id="status" class="pill">Waiting for CSV / API…</span>
-      </div>
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Target Plus — P&L (Local)</title>
+<style>
+:root{
+  --bg:#f6f8fb;--card:#fff;--text:#0f172a;--muted:#667085;--line:#e6eaf2;--accent:#2563eb;--danger:#ef4444;
+  --kpiA:#2563eb;--kpiB:#16a34a;--kpiC:#f59e0b;--kpiD:#8b5cf6;
+}
+*{box-sizing:border-box}
+body{font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial;margin:0;background:var(--bg);color:var(--text)}
+.header{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:1px solid var(--line);background:#fff;position:sticky;top:0;z-index:10}
+.tabs{display:flex;gap:8px}
+.tab{padding:8px 12px;border:1px solid var(--line);border-radius:10px;cursor:pointer;background:#fff}
+.tab.active{background:#eef2ff;border-color:#c7d2fe}
+.container{max-width:1280px;margin:0 auto;padding:16px}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:10px 0}
+.input,.select{border:1px solid var(--line);border-radius:10px;padding:8px 10px;background:#fff}
+.btn{background:var(--accent);color:#fff;border:none;border-radius:10px;padding:8px 12px;cursor:pointer}
+.btn.secondary{background:#fff;color:#111;border:1px solid var(--line)}
+.btn.danger{background:#ef4444;color:#fff}
+.pill{padding:6px 10px;border:1px solid var(--line);border-radius:999px;background:#fff;color:#374151}
+.card{border:1px solid var(--line);border-radius:14px;padding:14px;margin:14px 0;background:#fff}
+
+/* KPI deck modernized */
+.kpi-deck{display:flex;gap:14px;flex-wrap:wrap}
+.kpi-box{flex:1 1 360px;min-width:320px;border:1px solid var(--line);border-radius:12px;padding:12px;background:#fff;position:relative;overflow:hidden}
+.kpi-title{font-weight:700;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center}
+.kpi-title .range{color:var(--muted);font-weight:600;font-size:12px}
+
+/* responsive mini tiles that never overflow */
+.kpi-grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(140px,1fr));
+  gap:10px;
+}
+.kmini{border:1px solid var(--line);border-radius:10px;padding:8px 10px;background:#fff;min-width:0}
+.kmini .label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.kmini .value{font-weight:800;font-size:clamp(14px,2.2vw,18px);line-height:1.1;word-break:break-word}
+
+/* color accents on boxes */
+.kpi-box.theme-primary:before,
+.kpi-box.theme-A:before,
+.kpi-box.theme-B:before,
+.kpi-box.theme-C:before{
+  content:"";position:absolute;left:0;top:0;bottom:0;width:4px;border-radius:12px 0 0 12px;
+}
+.kpi-box.theme-primary:before{background:var(--kpiA)}
+.kpi-box.theme-A:before{background:var(--kpiB)}
+.kpi-box.theme-B:before{background:var(--kpiC)}
+.kpi-box.theme-C:before{background:var(--kpiD)}
+
+table{width:100%;border-collapse:separate;border-spacing:0;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#fff}
+th,td{padding:10px 12px;border-bottom:1px solid var(--line);font-size:14px;text-align:left}
+th{background:#f8fafc;color:#334155;cursor:pointer;user-select:none}
+th.sort-asc::after{content:" \\25B2"}
+th.sort-desc::after{content:" \\25BC"}
+
+.chart-head{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:8px}
+#viz{display:block;width:100%;background:#fff;border:1px solid var(--line);border-radius:12px}
+#vizOverlay{position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none}
+
+.sku-dd{position:relative;min-width:260px}
+.sku-dd .dropdown{position:absolute;top:100%;left:0;right:0;max-height:260px;overflow:auto;background:#fff;border:1px solid var(--line);border-radius:10px;margin-top:6px;z-index:40;display:none;box-shadow:0 10px 30px rgba(2,6,23,.10)}
+.sku-dd .dropdown.open{display:block}
+.sku-dd .dropdown .item{padding:6px 10px;cursor:pointer}
+.sku-dd .dropdown .item:hover{background:#f3f4f6}
+
+.muted{color:var(--muted);font-size:12px}
+.file-row{display:flex;justify-content:space-between;align-items:center;border-top:1px solid var(--line);padding:8px 0}
+</style>
+</head>
+<body>
+  <div class="header">
+    <div><strong>Target Plus P&L</strong></div>
+    <div class="tabs">
+      <div class="tab active" data-tab="home">Home</div>
+      <div class="tab" data-tab="settings">Settings</div>
     </div>
+  </div>
 
-    <div class="container">
-      <div class="grid" style="margin-bottom:12px">
-        <div class="card kpi" style="grid-column:span 3">
-          <div class="label">Revenue</div>
-          <div class="value" id="kpiRevenue">$0.00</div>
-        </div>
-        <div class="card kpi" style="grid-column:span 3">
-          <div className="label">Refunds</div>
-          <div class="value" id="kpiRefunds">$0.00</div>
-        </div>
-        <div class="card kpi" style="grid-column:span 3">
-          <div class="label">Fees</div>
-          <div class="value" id="kpiFees">$0.00</div>
-        </div>
-        <div class="card kpi" style="grid-column:span 3">
-          <div class="label">Gross Profit</div>
-          <div class="value" id="kpiGP">$0.00</div>
-        </div>
-      </div>
-
-      <div class="grid" style="margin-bottom:12px">
-        <div class="card" style="grid-column:span 8">
-          <div class="section-title">Revenue & Gross Profit over time</div>
-          <canvas id="timeChart" height="120"></canvas>
-        </div>
-        <div class="card" style="grid-column:span 4">
-          <div class="section-title">Top SKUs by Gross Profit</div>
-          <canvas id="skuPie" height="120"></canvas>
-        </div>
-      </div>
-
-      <div class="card" style="margin-bottom:12px">
+  <div class="container">
+    <!-- HOME -->
+    <div id="home">
+      <div class="card">
         <div class="row">
-          <div style="flex:1">
-            <label style="color:var(--muted); font-size:12px;">Product</label><br/>
-            <select id="skuSelect" class="select"></select>
+          <strong>Filters</strong>
+
+          <label>From <input id="dateFrom" type="date" class="input"></label>
+          <label>To <input id="dateTo" type="date" class="input"></label>
+          <button id="resetDatesBtn" class="btn secondary" type="button" title="Reset to last 30 days">Reset Dates</button>
+
+          <label>Group by
+            <select id="groupBy" class="select">
+              <option value="parent">Parent</option>
+              <option value="sku">SKU</option>
+            </select>
+          </label>
+
+          <!-- GLOBAL SKU MULTI-SELECT -->
+          <div class="sku-dd" id="globalSkuMs" title="Filter the entire page by SKU">
+            <input id="globalSkuInput" class="input" placeholder="Filter SKUs (multi-select)"/>
+            <div id="globalSkuDd" class="dropdown"></div>
           </div>
-          <div style="flex:2">
-            <label style="color:var(--muted); font-size:12px;">Search (SKU/Title)</label><br/>
-            <input id="searchInput" class="input" placeholder="Type to filter…" style="width:100%" />
-          </div>
-          <div>
-            <button id="resetBtn" class="button">Reset</button>
-          </div>
-          <div id="columnsHint" class="warn" style="margin-left:auto"></div>
+          <button id="resetSkusBtn" class="btn secondary" type="button" title="Clear selected SKUs">Reset SKUs</button>
+
+          <button id="apply" class="btn" type="button">Apply</button>
+          <span id="homeStatus" class="pill">Tip: Load demo data in Settings</span>
         </div>
       </div>
 
       <div class="card">
-        <table id="tbl">
-          <thead>
-            <tr id="tblHead"></tr>
-          </thead>
-          <tbody id="tblBody"></tbody>
+        <div class="row" style="justify-content:space-between">
+          <div><strong>Rolling KPIs</strong> <span class="muted">Primary follows page dates (or last 30d). Add boxes to compare.</span></div>
+          <button id="addKpiBox" class="btn secondary" type="button">+ Add box</button>
+        </div>
+        <div id="kpiDeck" class="kpi-deck"></div>
+      </div>
+
+      <div class="card">
+        <div class="chart-head">
+          <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+            <strong>Visualization</strong>
+            <select id="chartMode" class="select">
+              <option value="line">Line</option>
+              <option value="pie">Pie</option>
+              <option value="bar">Bar</option>
+            </select>
+            <label>Metric
+              <select id="metric" class="select">
+                <option value="sales">Sales</option>
+                <option value="profit">Profit</option>
+                <option value="units">Units</option>
+              </select>
+            </label>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end">
+            <span class="muted">Hover to see values.</span>
+            <span id="chartRange" class="muted" style="font-weight:600"></span>
+          </div>
+        </div>
+        <div style="position:relative">
+          <canvas id="viz" height="360"></canvas>
+          <canvas id="vizOverlay" height="360"></canvas>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="row" style="justify-content:space-between">
+          <div style="display:flex;flex-direction:column">
+            <strong id="tableTitle">By Parent</strong>
+            <span id="tableRange" class="muted"></span>
+          </div>
+          <span id="rowsCount" class="pill">0 rows</span>
+        </div>
+        <table>
+          <thead><tr id="thead"></tr></thead>
+          <tbody id="tbody"></tbody>
         </table>
       </div>
-
-      <div class="footer">
-        <div>Tip: Include <code>marketplace_fee</code> and <code>cogs</code> columns in your CSV for most accurate margins. Missing fees are estimated using Default Fee %.</div>
-        <div id="rowsCount" class="pill">0 rows</div>
-      </div>
     </div>
 
-    <!-- Modal: API settings -->
-    <div id="settingsModal" class="modal">
-      <div class="panel">
-        <h3>Target Plus API Settings</h3>
-        <p style="color:var(--muted)">
-          This is a static page. Live API calls may be blocked by CORS unless your Target Plus endpoint allows it.
-          If Fetch fails, paste the JSON response below (from Postman/Insomnia) and click <b>Import JSON</b>.
-        </p>
-        <label>Base URL</label>
-        <input id="apiBase" placeholder="e.g., https://plus.target.com" />
-        <label>API Token</label>
-        <input id="apiToken" placeholder="Bearer token" />
-        <label>Seller / SMS ID</label>
-        <input id="apiSeller" placeholder="Your Seller ID" />
+    <!-- SETTINGS -->
+    <div id="settings" style="display:none">
+      <div class="card">
         <div class="row">
-          <button id="saveApi" class="link">Save</button>
-          <button id="fetchOrders" class="button">Fetch Last 100 Orders</button>
-          <span id="apiStatus" class="pill">Idle</span>
+          <strong>Orders</strong>
+          <span class="muted">CSV columns: <b>Date, Order Number, Store SKU, Quantity, Price, Shipping Cost, Sales Tax, Discount</b></span>
         </div>
-        <label>Or paste orders JSON</label>
-        <textarea id="apiJson" placeholder='{"orders":[ ... ]}'></textarea>
-        <div class="actions">
-          <button class="link" id="closeSettings">Close</button>
-          <button class="button" id="importJson">Import JSON</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Modal: COGS editor -->
-    <div id="cogsModal" class="modal">
-      <div class="panel">
-        <h3>COGS Editor</h3>
-        <p style="color:var(--muted)">Set per-SKU COGS (saved in your browser).</p>
         <div class="row">
-          <select id="cogsSku" class="select"></select>
-          <input id="cogsValue" type="number" class="input number" step="0.01" min="0" placeholder="COGS per unit" />
-          <button id="saveCogs" class="button">Save COGS</button>
-          <span id="cogsStatus" class="pill">Idle</span>
+          <input id="csvFile" type="file" accept=".csv,text/csv" class="input" multiple/>
+          <label>Fee % (gross) <input id="feePct" type="number" class="input" step="0.01" min="0" max="1" value="0.15" style="width:120px"></label>
+          <label>Default COGS % <input id="cogsPct" type="number" class="input" step="0.01" min="0" max="1" value="0.00" style="width:120px"></label>
+          <button id="applyFees" class="btn" type="button" title="Apply Fee/COGS settings">Apply</button>
+          <button id="loadDemo" class="btn secondary" type="button">Load Demo Data</button>
+          <button id="dedupeNow" class="btn secondary" type="button" title="Remove duplicates by Order+SKU">De-duplicate now</button>
+          <button id="clearAll" class="btn danger" type="button" title="Remove all imported CSVs and rows">Clear all data</button>
+          <span id="status" class="pill">Upload Orders CSV…</span>
         </div>
-        <div style="margin-top:10px; font-size:12px; color:var(--muted)">Tip: COGS overrides apply to all rows for that SKU (CSV + API). They are stored in <code>localStorage</code> and persist on this browser.</div>
-        <div class="actions">
-          <button class="link" id="closeCogs">Close</button>
+      </div>
+
+      <div class="card">
+        <div class="row" style="justify-content:space-between">
+          <strong>Imported Files</strong>
+          <input id="fileSearch" class="input" placeholder="Search by name…" style="min-width:260px"/>
+        </div>
+        <div id="filesList"></div>
+        <div style="height:10px"></div>
+        <div><strong>Imported COGS Files</strong> <span class="muted">(overrides merged into current session)</span></div>
+        <div id="cogsFilesList"></div>
+      </div>
+
+      <div class="card">
+        <div class="row">
+          <strong>COGS Overrides</strong>
+          <span class="muted">Per-SKU: per-unit ($) or % of item revenue</span>
+          <span id="cogsCount" class="pill">0 overrides</span>
+        </div>
+        <div class="row">
+          <!-- Searchable SKU dropdown for COGS -->
+          <div class="sku-dd" id="cogsSkuMs" title="Pick a SKU">
+            <input id="cogsSku" class="input" placeholder="Pick SKU (searchable)"/>
+            <div id="cogsSkuDd" class="dropdown"></div>
+          </div>
+
+          <select id="cogsType" class="input">
+            <option value="perUnit">Per-Unit COGS ($)</option>
+            <option value="percentRevenue">Percent of Revenue (%)</option>
+          </select>
+          <input id="cogsValue" type="number" class="input" step="0.01" min="0" placeholder="8.50 or 20 for 20%"/>
+          <button id="saveCogsBtn" class="btn" type="button">Save Override</button>
+          <input id="cogsCsv" type="file" accept=".csv,text/csv" class="input" title="Import COGS CSV" />
+        </div>
+        <table>
+          <thead><tr><th>SKU</th><th>Type</th><th>Value</th><th></th></tr></thead>
+          <tbody id="cogsBody"></tbody>
+        </table>
+        <div class="muted" style="margin-top:6px">
+          COGS CSV examples:<br/>
+          • <code>SKU, Per Unit</code> (e.g., <code>ABC-1, 8.50</code>)<br/>
+          • <code>SKU, Percent Revenue</code> (e.g., <code>ABC-1, 20</code> for 20%)
         </div>
       </div>
     </div>
+  </div>
 
-    <script>
-      // --- Utilities & storage ---
-      const $ = sel => document.querySelector(sel);
-      const fmtUSD = n => (n||0).toLocaleString(undefined,{style:"currency",currency:"USD",maximumFractionDigits:2});
-      const dParse = s => { const dt = new Date(s); return isNaN(dt.getTime()) ? null : dt; };
-      const dKey = dt => dt.toISOString().slice(0,10);
-      const ls = {
-        get(k, d){ try{ const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch(e){ return d; } },
-        set(k, v){ localStorage.setItem(k, JSON.stringify(v)); }
-      };
+<script>
+/* ---------------- Tabs ---------------- */
+document.querySelectorAll('.tab').forEach(tab=>{
+  tab.addEventListener('click', ()=>{
+    document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
+    tab.classList.add('active');
+    const id=tab.dataset.tab;
+    document.getElementById('home').style.display = id==='home' ? '' : 'none';
+    document.getElementById('settings').style.display = id==='settings' ? '' : 'none';
+    if(id==='home') renderCharts();
+  });
+});
 
-      // Tiny CSV parser
-      function parseCSV(text){
-        const rows = [];
-        let row = [], field = "", i = 0, inQuotes = false;
-        while (i < text.length){
-          const c = text[i];
-          if (inQuotes){
-            if (c === '"'){ if (text[i+1] === '"'){ field += '"'; i++; } else { inQuotes = false; } }
-            else { field += c; }
-          } else {
-            if (c === '"'){ inQuotes = true; }
-            else if (c === ','){ row.push(field); field = ""; }
-            else if (c === '\n'){ rows.push(row.concat(field)); row = []; field = ""; }
-            else if (c === '\r'){}
-            else { field += c; }
-          }
-          i++;
-        }
-        if (field.length || row.length) rows.push(row.concat(field));
-        return rows;
-      }
-      const toLowerMap = arr => Object.fromEntries(arr.map((h,i)=>[h.trim().toLowerCase(), i]));
-      const num = v => { if (v==null || v==="") return 0; const n = Number(String(v).replace(/[^0-9.\-]/g,"")); return isNaN(n) ? 0 : n; };
-      const str = v => (v==null ? "" : String(v));
+/* ---------------- Utils ---------------- */
+const fmtUSD = n => (n||0).toLocaleString(undefined,{style:'currency',currency:'USD',maximumFractionDigits:2});
+const num = v => { if(v==null||v==='') return 0; const n=Number(String(v).replace(/[^0-9.\-]/g,'')); return isNaN(n)?0:n; };
+function parseDate(s){
+  if (s==null) return null;
+  const t = String(s).trim();
 
-      // Local storage keys
-      const LS_API = "tp_api";
-      const LS_FEE = "tp_fee_pct";
-      const LS_COGS = "tp_cogs_overrides";
+  // Excel serial (rough, using 25569 offset)
+  if (/^\d{4,6}$/.test(t)) {
+    const serial = Number(t);
+    const ms = (serial - 25569) * 86400000;
+    const d = new Date(ms);
+    if (!isNaN(d)) return d;
+  }
 
-      // --- Data normalization ---
-      function normalizeCsvRows(rows, feePct, cogsOverrides){
-        const [head, ...rest] = rows;
-        if (!head) return [];
-        const cols = toLowerMap(head);
-        showColumnsHint(cols);
+  // ISO YYYY-MM-DD
+  if (/^\d{4}-\d{2}-\d{2}/.test(t)) {
+    const d = new Date(t + 'T00:00:00');
+    if (!isNaN(d)) return d;
+  }
 
-        const out = [];
-        rest.forEach(arr => {
-          if (!arr || !arr.length) return;
-          const get = name => {
-            const i = cols[name];
-            return (typeof i === "number") ? arr[i] : "";
-          };
-          const quantity = num(get("quantity")||1);
-          const price = num(get("item_price"));
-          const feeCol = get("marketplace_fee");
-          const fee = feeCol !== "" ? num(feeCol) : +(price * quantity * feePct).toFixed(2);
-          const sku = str(get("sku"));
-          const cogsCsv = num(get("cogs"));
-          const cogs = (cogsOverrides && sku in cogsOverrides) ? Number(cogsOverrides[sku]) : cogsCsv;
-          out.push({
-            source: "csv",
-            order_id: str(get("order_id")),
-            purchase_date: str(get("purchase_date")),
-            sku,
-            title: str(get("title")),
-            quantity: quantity,
-            item_price: price,
-            shipping_price: num(get("shipping_price")),
-            tax: num(get("tax")),
-            refund_amount: num(get("refund_amount")),
-            buyer_state: str(get("buyer_state")),
-            marketplace_fee: fee,
-            cogs: cogs
-          });
-        });
-        return out;
-      }
+  // MM/DD/YYYY or M/D/YYYY
+  const m = t.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
+  if (m) {
+    const year = m[3].length === 2 ? (Number(m[3]) + 2000) : Number(m[3]);
+    const d = new Date(year, Number(m[1]) - 1, Number(m[2]));
+    if (!isNaN(d)) return d;
+  }
 
-      function flattenOrderJson(o, cogsOverrides){
-        const order_id = o.order_id || o.id || o.orderNumber || o.order_number;
-        const purchase_date = o.purchase_date || o.createdAt || o.created_at;
-        const buyer_state = (o.shipping_address && (o.shipping_address.state || o.shipping_address.region)) || o.buyer_state;
-        const status = o.status || "Shipped";
-        const lines = Array.isArray(o.lines) ? o.lines : (Array.isArray(o.order_lines) ? o.order_lines : []);
-        const rows = lines.map(li => {
-          const sku = li.sku || li.sellerSku || li.SKU || "";
-          const cogsLi = num(li.cogs ?? 0);
-          const cogs = (cogsOverrides && sku in cogsOverrides) ? Number(cogsOverrides[sku]) : cogsLi;
-          return {
-            source: "api",
-            order_id,
-            purchase_date,
-            sku,
-            title: li.title || li.name || "",
-            quantity: Number(li.quantity || 1),
-            item_price: num(li.item_price ?? li.price ?? 0),
-            shipping_price: num(li.shipping_price ?? 0),
-            tax: num(li.tax ?? 0),
-            refund_amount: num(li.refund_amount ?? 0),
-            buyer_state,
-            marketplace_fee: num(li.marketplace_fee ?? 0),
-            cogs,
-            status
-          };
-        });
-        return rows;
-      }
+  const d1 = new Date(t);
+  if (!isNaN(d1)) return d1;
+  return null;
+}
+const toLower = s => String(s||'').trim().toLowerCase();
+function parseCSV(text){
+  const first=text.split(/\r?\n/,1)[0]||''; const delim = first.includes('\t')?'\t':(first.includes(';')?';':',');
+  const rows=[]; let row=[], field='', i=0, q=false; while(i<text.length){ const c=text[i];
+    if(q){ if(c==='"'){ if(text[i+1]==='"'){ field+='"'; i++; } else { q=false; } } else { field+=c; } }
+    else { if(c==='"'){ q=true; } else if(c===delim){ row.push(field); field=''; } else if(c==='\n'){ rows.push(row.concat(field)); row=[]; field=''; } else if(c==='\r'){} else { field+=c; } }
+    i++;
+  } if(field.length||row.length) rows.push(row.concat(field)); return rows;
+}
+function dkey(d){ return d.toISOString().slice(0,10); }
+function toDateSafe(d){ if(d instanceof Date && !isNaN(d)) return d; const dd=new Date(d); return isNaN(dd)? null: dd; }
+function maxOrderDate(){ if (!orders.length) return null; let max=orders[0].date; for(const o of orders) if(o.date>max) max=o.date; return new Date(max.getFullYear(),max.getMonth(),max.getDate()); }
+function defaultDateRange(){ const end=maxOrderDate()||new Date(); const start=new Date(end); start.setDate(start.getDate()-29); return {start,end}; }
+function setInputsToDefaultIfEmpty(){ const df=$('#dateFrom'), dt=$('#dateTo'); if(!df||!dt) return; if(!df.value||!dt.value){ const {start,end}=defaultDateRange(); df.value=start.toISOString().slice(0,10); dt.value=end.toISOString().slice(0,10); } }
+const $ = s => document.querySelector(s);
 
-      function normalizeApiPayload(payload, cogsOverrides){
-        let orders = payload.orders || payload.data || payload;
-        if (!Array.isArray(orders)) orders = [orders];
-        const out = [];
-        orders.forEach(o => { out.push(...flattenOrderJson(o, cogsOverrides)); });
-        return out;
-      }
+/* ---------------- Storage ---------------- */
+const LS_COGS='tp_cogs_v31', LS_FEE='tp_fee_v31', LS_COGSP='tp_cogsp_v31', LS_ORDERS='tp_orders_v31', LS_FILES='tp_files_v31', LS_BOXES='tp_boxes_v1', LS_GLOBAL_SKUS='tp_global_sku_filter_v1';
+const LS_COGS_FILES='tp_cogs_files_v1'; /* NEW: COGS files manifest */
 
-      // Aggregations
-      function groupBySku(rows){
-        const map = new Map();
-        rows.forEach(r => {
-          const key = r.sku;
-          const cur = map.get(key) || { sku:key, title:r.title, units:0, revenue:0, refunds:0, fees:0, cogsTotal:0 };
-          cur.units += (r.quantity||0);
-          cur.revenue += (r.item_price||0) * (r.quantity||0);
-          cur.refunds += (r.refund_amount||0);
-          cur.fees += (r.marketplace_fee||0);
-          cur.cogsTotal += (r.cogs||0) * (r.quantity||0);
-          map.set(key, cur);
-        });
-        return Array.from(map.values()).map(x => {
-          const net = x.revenue - x.refunds;
-          const gp = net - x.fees - x.cogsTotal;
-          const margin = net ? (gp / net) * 100 : 0;
-          return { ...x, grossProfit: gp, margin };
-        });
-      }
+let cogsOverrides = JSON.parse(localStorage.getItem(LS_COGS) || '{}');         // {SKU:{type,value}}
+let fileManifest = JSON.parse(localStorage.getItem(LS_FILES) || '[]');         // [{id,name,rows,addedAt}]
+let cogsFileManifest = JSON.parse(localStorage.getItem(LS_COGS_FILES) || '[]'); // [{id,name,rows,addedAt}]
+let kpiBoxes     = JSON.parse(localStorage.getItem(LS_BOXES) || '[]');
+let globalSelectedSkus = new Set(JSON.parse(localStorage.getItem(LS_GLOBAL_SKUS) || '[]'));
 
-      function totals(rows){
-        const revenue = rows.reduce((s,r)=>s+r.revenue,0);
-        const refunds = rows.reduce((s,r)=>s+r.refunds,0);
-        const fees = rows.reduce((s,r)=>s+r.fees,0);
-        const cogs = rows.reduce((s,r)=>s+r.cogsTotal,0);
-        const net = revenue - refunds;
-        const gp = net - fees - cogs;
-        const margin = net ? (gp / net) * 100 : 0;
-        return { revenue, refunds, fees, cogs, gp, margin };
-      }
+let orders=[];
+try{ const raw=localStorage.getItem(LS_ORDERS); if(raw){ const arr=JSON.parse(raw)||[]; orders = arr.map(o=>({...o, date:new Date(o.date)})); } }catch(e){}
+let filtered=[], byDate=[], byGroup=[];
+let groupBy='parent'; let sortState={key:'gp', dir:'desc'};
 
-      function groupByDate(rows){
-        const byDate = new Map();
-        rows.forEach(r => {
-          const dt = dParse(r.purchase_date);
-          if (!dt) return;
-          const key = dKey(dt);
-          const cur = byDate.get(key) || { revenue:0, refunds:0, fees:0, cogs:0 };
-          cur.revenue += (r.item_price||0) * (r.quantity||0);
-          cur.refunds += (r.refund_amount||0);
-          cur.fees += (r.marketplace_fee||0);
-          cur.cogs += (r.cogs||0) * (r.quantity||0);
-          byDate.set(key, cur);
-        });
-        const arr = Array.from(byDate.entries()).map(([date, v]) => {
-          const net = v.revenue - v.refunds;
-          const gp = net - v.fees - v.cogs;
-          return { date, revenue:v.revenue, gp };
-        }).sort((a,b)=>a.date.localeCompare(b.date));
-        return arr;
-      }
+/* ---------------- Single-flow date picker ---------------- */
+(function(){
+  const df = $('#dateFrom'); const dt = $('#dateTo');
+  if(!df || !dt) return;
+  df.addEventListener('change', ()=>{
+    if(df.value && (!dt.value || dt.value < df.value)) dt.value = df.value;
+    if (typeof dt.showPicker === 'function') dt.showPicker(); else dt.focus();
+  });
+  dt.addEventListener('change', ()=>{ if(df.value && dt.value && dt.value < df.value) df.value = dt.value; });
+})();
 
-      // --- State ---
-      let allLines = [];   // raw normalized lines (csv+api)
-      let filteredLines = []; // lines after date filtering
-      let bySku = [];      // aggregated
-      let sortKey = "grossProfit";
-      let sortDir = "desc";
-      let productFilter = "";
-      let searchQ = "";
-      let chartTime, chartPie;
-      let cogsOverrides = ls.get(LS_COGS, {});
-
-      const headers = [
-        ["sku","SKU"],
-        ["title","Title"],
-        ["units","Units"],
-        ["revenue","Revenue"],
-        ["refunds","Refunds"],
-        ["fees","Fees"],
-        ["cogsTotal","COGS (total)"],
-        ["grossProfit","Gross Profit"],
-        ["margin","Margin %"]
-      ];
-
-      function renderTable(rows){
-        const head = $("#tblHead");
-        head.innerHTML = "";
-        headers.forEach(([key,label]) => {
-          const th = document.createElement("th");
-          th.textContent = label + (sortKey===key ? (sortDir==="asc"?" ▲":" ▼") : "");
-          th.onclick = () => { if (sortKey===key) sortDir = (sortDir==="asc"?"desc":"asc"); else { sortKey=key; sortDir="asc"; } update(); };
-          head.appendChild(th);
-        });
-
-        const body = $("#tblBody");
-        body.innerHTML = "";
-        rows.forEach(r => {
-          const tr = document.createElement("tr");
-          const cells = [
-            r.sku,
-            r.title || "—",
-            r.units,
-            fmtUSD(r.revenue),
-            fmtUSD(r.refunds),
-            fmtUSD(r.fees),
-            fmtUSD(r.cogsTotal),
-            fmtUSD(r.grossProfit),
-            (r.margin||0).toFixed(2)
-          ];
-          cells.forEach(val => {
-            const td = document.createElement("td");
-            td.textContent = val;
-            tr.appendChild(td);
-          });
-          body.appendChild(tr);
-        });
-        $("#rowsCount").textContent = rows.length + " rows";
-      }
-
-      function updateKPIs(t){
-        $("#kpiRevenue").textContent = fmtUSD(t.revenue);
-        $("#kpiRefunds").textContent = fmtUSD(t.refunds);
-        $("#kpiFees").textContent = fmtUSD(t.fees);
-        $("#kpiGP").textContent = fmtUSD(t.gp);
-      }
-
-      function updateSkuFilter(){
-        const sel = $("#skuSelect");
-        const skus = Array.from(new Set(filteredLines.map(r=>r.sku))).sort();
-        sel.innerHTML = '<option value="">All products</option>' + skus.map(s=>'<option>'+s+'</option>').join("");
-        // Also populate COGS editor dropdown
-        const csel = $("#cogsSku");
-        if (csel){
-          csel.innerHTML = skus.map(s=>'<option>'+s+'</option>').join("");
-        }
-      }
-
-      function filteredSorted(){
-        let rows = bySku.filter(r => {
-          const okSku = productFilter ? r.sku === productFilter : true;
-          const hay = (r.sku + " " + (r.title||"")).toLowerCase();
-          const okQ = searchQ ? hay.includes(searchQ.toLowerCase()) : true;
-          return okSku && okQ;
-        });
-        rows.sort((a,b) => {
-          const av = a[sortKey], bv = b[sortKey];
-          if (av < bv) return sortDir==="asc" ? -1 : 1;
-          if (av > bv) return sortDir==="asc" ? 1 : -1;
-          return 0;
-        });
-        return rows;
-      }
-
-      function applyDateFilter(){
-        const f = $("#dateFrom").value ? new Date($("#dateFrom").value + "T00:00:00") : null;
-        const t = $("#dateTo").value ? new Date($("#dateTo").value + "T23:59:59") : null;
-        filteredLines = allLines.filter(r => {
-          const dt = dParse(r.purchase_date);
-          if (!dt) return true;
-          if (f && dt < f) return false;
-          if (t && dt > t) return false;
-          return true;
-        });
-      }
-
-      function updateCharts(rows){
-        const series = groupByDate(filteredLines);
-        const labels = series.map(s=>s.date);
-        const rev = series.map(s=>+(s.revenue.toFixed(2)));
-        const gp = series.map(s=>+(s.gp.toFixed(2)));
-
-        // Time chart
-        const ctx1 = document.getElementById('timeChart').getContext('2d');
-        if (chartTime) chartTime.destroy();
-        chartTime = new Chart(ctx1, {
-          type: 'line',
-          data: { labels, datasets: [ { label: 'Revenue', data: rev }, { label: 'Gross Profit', data: gp } ] },
-          options: { responsive: true, plugins: { legend: { position: 'bottom' } }, scales: { y: { beginAtZero: true } } }
-        });
-
-        // Pie for top SKUs by GP
-        const top = [...rows].sort((a,b)=>b.grossProfit - a.grossProfit).slice(0,6);
-        const ctx2 = document.getElementById('skuPie').getContext('2d');
-        if (chartPie) chartPie.destroy();
-        chartPie = new Chart(ctx2, {
-          type: 'pie',
-          data: { labels: top.map(r=>r.sku), datasets: [{ data: top.map(r=>+(r.grossProfit.toFixed(2))) }] },
-          options: { responsive: true, plugins: { legend: { position: 'bottom' } } }
-        });
-      }
-
-      function showColumnsHint(cols){
-        const need = ["order_id","purchase_date","sku","title","quantity","item_price","shipping_price","tax","refund_amount","buyer_state"];
-        const missing = need.filter(c => !(c in cols));
-        $("#columnsHint").textContent = missing.length ? "Missing columns: " + missing.join(", ") + " (we'll still import what we can)" : "All key columns detected";
-        $("#columnsHint").className = missing.length ? "warn" : "ok";
-      }
-
-      function update(){
-        applyDateFilter();
-        bySku = groupBySku(filteredLines);
-        const rows = filteredSorted();
-        renderTable(rows);
-        updateKPIs(totals(rows));
-        updateSkuFilter();
-        updateCharts(rows);
-      }
-
-      // --- Event wiring ---
-      $("#csvFile").addEventListener("change", (e) => {
-        const file = e.target.files && e.target.files[0];
-        if (!file) return;
-        $("#status").textContent = "Reading " + file.name + "…";
-        const reader = new FileReader();
-        reader.onload = () => {
-          try{
-            const text = reader.result;
-            const rows = parseCSV(text);
-            const feePct = Number($("#feePct").value || 0.12);
-            const lines = normalizeCsvRows(rows, feePct, cogsOverrides);
-            allLines = allLines.concat(lines);
-            $("#status").textContent = "Loaded " + file.name + " (" + lines.length + " lines)";
-            update();
-          }catch(err){
-            console.error(err);
-            $("#status").textContent = "Error reading file. See console.";
-          }
-        };
-        reader.readAsText(file);
+/* ---------------- Global SKU multiselect ---------------- */
+function persistGlobalSkus(){ localStorage.setItem(LS_GLOBAL_SKUS, JSON.stringify(Array.from(globalSelectedSkus))); }
+(function buildGlobalMs(){
+  const input=$('#globalSkuInput'), panel=$('#globalSkuDd'), root=$('#globalSkuMs');
+  if(!input||!panel||!root) return;
+  function render(){
+    const q=(input.value||'').toLowerCase();
+    const set=new Set(orders.map(o=>o.sku));
+    const arr=Array.from(set).sort().filter(s=>!q||s.toLowerCase().includes(q));
+    panel.innerHTML='';
+    if(arr.length===0){ const div=document.createElement('div'); div.className='item'; div.textContent='No matches'; panel.appendChild(div); panel.classList.add('open'); return; }
+    arr.forEach(s=>{
+      const row=document.createElement('div'); row.className='item';
+      const checked=globalSelectedSkus.has(s);
+      row.innerHTML=`<input type="checkbox" ${checked?'checked':''} data-sku="${s}" style="margin-right:8px"> ${s}`;
+      row.addEventListener('click', ()=>{
+        const cb=row.querySelector('input'); cb.checked=!cb.checked;
+        if(cb.checked) globalSelectedSkus.add(s); else globalSelectedSkus.delete(s);
+        persistGlobalSkus(); refreshSkuSummary(); recompute();
       });
+      panel.appendChild(row);
+    });
+    panel.classList.add('open');
+  }
+  function refreshSkuSummary(){
+    const list=Array.from(globalSelectedSkus).sort();
+    input.value=''; input.placeholder = list.length? `Selected: ${list.slice(0,3).join(', ')}${list.length>3?'…':''}` : 'Filter SKUs (multi-select)';
+  }
+  input.addEventListener('focus', render); input.addEventListener('click', render); input.addEventListener('input', render);
+  document.addEventListener('click', (e)=>{ if(!root.contains(e.target)) panel.classList.remove('open'); });
+  root.addEventListener('contextmenu', (e)=>{ e.preventDefault(); if(globalSelectedSkus.size && confirm('Clear selected SKUs filter?')){ globalSelectedSkus.clear(); persistGlobalSkus(); refreshSkuSummary(); recompute(); }});
+  refreshSkuSummary();
+  window.__refreshGlobalSkuSummary = refreshSkuSummary;
+})();
 
-      // fee percent persist
-      const savedFee = ls.get(LS_FEE, 0.12);
-      $("#feePct").value = savedFee;
-      $("#feePct").addEventListener("change", () => {
-        const val = Number($("#feePct").value || 0.12);
-        ls.set(LS_FEE, val);
-        if (!allLines.length) return;
-        // recompute estimated fees for rows with zero fee
-        allLines = allLines.map(r => ({ ...r, marketplace_fee: r.marketplace_fee ? r.marketplace_fee : +( (r.item_price||0) * (r.quantity||0) * val ).toFixed(2) }));
-        update();
-      });
+/* ---------------- CSV / normalization ---------------- */
+/* Orders CSV expected head: Date, Order Number, Store SKU, Quantity, Price, Shipping Cost, Sales Tax, Discount
+   Discount in CSV is a positive number meaning "deduct this amount" */
+function normalizeOrders(arr, fileId){
+  const [head,...rest]=arr; const m=Object.fromEntries((head||[]).map((h,i)=>[toLower(h),i]));
+  const idx={
+    date:m['date'], order:m['order number'], sku:m['store sku'], qty:m['quantity'], price:m['price'],
+    shipCost:m['shipping cost'], tax:m['sales tax'], disc:m['discount']
+  };
+  if([idx.date,idx.sku,idx.qty,idx.price].some(v=>typeof v!=='number')) throw new Error('Need Date, Store SKU, Quantity, Price columns.');
+  const out=[];
+  rest.forEach(r=>{
+    if(!r||!r.length) return;
+    const dt=parseDate(r[idx.date]); if(!dt) return;
+    const sku=String(r[idx.sku]||'').trim(); if(!sku) return;
+    const qty = num(r[idx.qty]);
+    const price = num(r[idx.price]);
+    const gross = qty * price;                 // Sales (gross revenue)
+    const discountRaw = num(idx.disc!=null ? r[idx.disc] : 0);
+    const discountDeduction = Math.abs(discountRaw);  // always a deduction
+    const shippingCost = num(idx.shipCost!=null ? r[idx.shipCost] : 0);
+    const salesTax = num(idx.tax!=null ? r[idx.tax] : 0);  // ignored in profit
 
-      $("#applyDates").addEventListener("click", update);
-      $("#skuSelect").addEventListener("change", (e) => { productFilter = e.target.value; update(); });
-      $("#searchInput").addEventListener("input", (e) => { searchQ = e.target.value; update(); });
-      $("#resetBtn").addEventListener("click", () => {
-        $("#skuSelect").value = ""; productFilter = "";
-        $("#searchInput").value = ""; searchQ = "";
-        sortKey = "grossProfit"; sortDir = "desc";
-        $("#dateFrom").value = ""; $("#dateTo").value = "";
-        update();
-      });
+    out.push({
+      fileId, date:dt, order: idx.order!=null?String(r[idx.order]||''):'', sku, parent:sku,
+      qty, price,
+      gross,                         // Sales
+      discount: discountDeduction,   // positive deduction
+      shippingCost, salesTax,
+      feeCol: 0
+    });
+  });
+  return out;
+}
 
-      $("#downloadBtn").addEventListener("click", () => {
-        const rows = filteredSorted();
-        const cols = ["SKU","Title","Units","Revenue","Refunds","Fees","COGS (total)","Gross Profit","Margin %"];
-        const lines = [cols.join(",")].concat(rows.map(r => [
-          r.sku, r.title||"", r.units,
-          r.revenue.toFixed(2), r.refunds.toFixed(2), r.fees.toFixed(2),
-          r.cogsTotal.toFixed(2), r.grossProfit.toFixed(2),
-          (r.margin||0).toFixed(2)
-        ].join(",")));
-        const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8" });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url; a.download = "pnl_by_sku.csv"; a.click();
-        URL.revokeObjectURL(url);
-      });
+/* ---------- Dedupe key: Order Number + SKU (first-seen wins) ---------- */
+function keyOf(r) {
+  const ord = String(r.order || '').trim().toUpperCase();
+  const sku = String(r.sku   || '').trim().toUpperCase();
+  if (ord && sku) return `${ord}|${sku}`;
+  // Fallback when order number is missing
+  return `${dkey(r.date)}|${sku}|${Number(r.price)||0}|${Number(r.qty)||0}|${Number(r.discount)||0}`;
+}
 
-      // Modal controls: API
-      $("#openSettings").addEventListener("click", ()=> {
-        const saved = ls.get(LS_API, {});
-        $("#apiBase").value = saved.base || "";
-        $("#apiToken").value = saved.token || "";
-        $("#apiSeller").value = saved.seller || "";
-        $("#settingsModal").style.display = "flex";
-      });
-      $("#closeSettings").addEventListener("click", ()=> $("#settingsModal").style.display = "none");
-      $("#saveApi").addEventListener("click", ()=> {
-        ls.set(LS_API, { base: $("#apiBase").value.trim(), token: $("#apiToken").value.trim(), seller: $("#apiSeller").value.trim() });
-        $("#apiStatus").textContent = "Saved";
-      });
+/* ---------------- Apply Filter + Aggregate ---------------- */
+function primaryRange(){
+  const df=$('#dateFrom')?.value;
+  const dt=$('#dateTo')?.value;
+  if (df || dt) {
+    const start = df ? new Date(df + 'T00:00:00') : new Date('2000-01-01T00:00:00');
+    const end   = dt ? new Date(dt + 'T23:59:59') : new Date();
+    return { start, end };
+  }
+  return defaultDateRange();
+}
+function applyFilter(){
+  const df=$('#dateFrom'), dt=$('#dateTo');
+  let from, to;
+  if (df?.value || dt?.value) {
+    from = df?.value ? new Date(df.value + 'T00:00:00') : new Date('2000-01-01T00:00:00');
+    to   = dt?.value ? new Date(dt.value + 'T23:59:59') : new Date();
+  } else {
+    const rng = defaultDateRange();
+    from = new Date(rng.start.getFullYear(), rng.start.getMonth(), rng.start.getDate(), 0,0,0);
+    to   = new Date(rng.end.getFullYear(),   rng.end.getMonth(),   rng.end.getDate(),   23,59,59);
+  }
+  filtered = orders.filter(x=>{
+    if (x.date < from || x.date > to) return false;
+    if (globalSelectedSkus.size && !globalSelectedSkus.has(x.sku)) return false;
+    return true;
+  });
+}
+function aggregate(){
+  const feePct=Number($('#feePct')?.value||0); // % of gross
+  const cogsPct=Number($('#cogsPct')?.value||0);
 
-      $("#fetchOrders").addEventListener("click", async () => {
-        const base = $("#apiBase").value.trim().replace(/\/$/,"");
-        const token = $("#apiToken").value.trim();
-        const seller = $("#apiSeller").value.trim();
-        if (!base || !token || !seller) { $("#apiStatus").textContent = "Missing fields"; return; }
-        $("#apiStatus").textContent = "Fetching…";
-        try{
-          const url = base + "/seller_orders-v1/orders?seller_id=" + encodeURIComponent(seller) + "&limit=100";
-          const resp = await fetch(url, { headers: { "Authorization": "Bearer " + token, "Content-Type":"application/json" } });
-          if (!resp.ok) throw new Error("HTTP " + resp.status);
-          const json = await resp.json();
-          const lines = normalizeApiPayload(json, cogsOverrides);
-          allLines = allLines.concat(lines);
-          $("#apiStatus").textContent = "Imported " + lines.length + " lines";
-          $("#status").textContent = "API import done";
-          update();
-        }catch(err){
-          console.error(err);
-          $("#apiStatus").textContent = "Fetch failed (likely CORS). Paste JSON below.";
-        }
-      });
+  // by date
+  const md=new Map();
+  filtered.forEach(r=>{
+    const netSales = r.gross;                      // Sales = gross revenue
+    const fee = netSales * feePct;
+    const discount = r.discount;                   // positive deduction
+    const ovr = cogsOverrides[r.sku];
+    const cogs = ovr ? (ovr.type==='perUnit' ? (ovr.value*r.qty) : (netSales*ovr.value)) : (netSales*cogsPct);
 
-      $("#importJson").addEventListener("click", () => {
-        try{
-          const json = JSON.parse($("#apiJson").value || "{}");
-          const lines = normalizeApiPayload(json, cogsOverrides);
-          allLines = allLines.concat(lines);
-          $("#apiStatus").textContent = "Imported " + lines.length + " lines from JSON";
-          $("#status").textContent = "JSON import done";
-          update();
-        }catch(err){
-          console.error(err);
-          $("#apiStatus").textContent = "Invalid JSON";
-        }
-      });
+    const key=dkey(r.date);
+    const cur=md.get(key)||{sales:0, profit:0, units:0, orders:new Set()};
+    cur.sales += netSales;
+    cur.units += r.qty;
+    cur.orders.add(r.order||key);
+    cur.profit += netSales - fee - discount - cogs - r.shippingCost; // Profit
+    md.set(key, cur);
+  });
+  byDate = Array.from(md.entries()).map(([date,v])=>({date:new Date(date+'T00:00:00'), ...v, orders:v.orders.size})).sort((a,b)=>a.date-b.date);
 
-      // Modal controls: COGS
-      $("#openCogs").addEventListener("click", ()=> {
-        updateSkuFilter(); // ensure dropdown up-to-date
-        $("#cogsSku").value = $("#cogsSku").options[0] ? $("#cogsSku").options[0].value : "";
-        $("#cogsValue").value = $("#cogsSku").value in cogsOverrides ? cogsOverrides[$("#cogsSku").value] : "";
-        $("#cogsModal").style.display = "flex";
-      });
-      $("#closeCogs").addEventListener("click", ()=> $("#cogsModal").style.display = "none");
+  // by group
+  const mk=new Map();
+  filtered.forEach(r=>{
+    const netSales = r.gross;
+    const fee = netSales * feePct;
+    const discount = r.discount;
+    const ovr = cogsOverrides[r.sku];
+    const cogs = ovr ? (ovr.type==='perUnit' ? (ovr.value*r.qty) : (netSales*ovr.value)) : (netSales*cogsPct);
+    const key=(groupBy==='parent')?(r.parent||r.sku):r.sku;
 
-      $("#cogsSku").addEventListener("change", () => {
-        const sku = $("#cogsSku").value;
-        $("#cogsValue").value = sku in cogsOverrides ? cogsOverrides[sku] : "";
-      });
+    const cur=mk.get(key)||{key,sales:0,shippingCost:0,feesRedCard:0,cogs:0,units:0,gp:0,denom:0};
+    cur.sales += netSales;
+    cur.shippingCost += r.shippingCost;
+    cur.feesRedCard += fee + discount;            // fee + discount deduction
+    cur.cogs += cogs;
+    cur.units += r.qty;
 
-      $("#saveCogs").addEventListener("click", () => {
-        const sku = $("#cogsSku").value;
-        const v = Number($("#cogsValue").value || 0);
-        if (!sku) { $("#cogsStatus").textContent = "Choose SKU"; return; }
-        if (v < 0) { $("#cogsStatus").textContent = "Invalid COGS"; return; }
-        cogsOverrides[sku] = v;
-        ls.set(LS_COGS, cogsOverrides);
-        // apply to all lines for that SKU
-        allLines = allLines.map(r => r.sku === sku ? { ...r, cogs: v } : r);
-        $("#cogsStatus").textContent = "Saved";
-        update();
-      });
+    cur.gp += netSales - fee - discount - cogs - r.shippingCost; // Profit
+    cur.denom += netSales;
+    mk.set(key, cur);
+  });
+  byGroup = Array.from(mk.values()).map(x=>({...x, margin: x.denom? (x.gp/x.denom*100):0}));
 
-      // Seed with a small sample
-      (function seed(){
-        const savedApi = ls.get(LS_API, {});
-        if (savedApi.base) $("#status").textContent = "API settings saved (" + savedApi.base + ")";
-        const sample = `order_id,purchase_date,sku,title,quantity,item_price,shipping_price,tax,refund_amount,buyer_state,marketplace_fee,cogs
-TGT-1001,2025-07-01,ABC-123,Widget A,2,25.00,5.00,3.00,0.00,MN,6.00,8.50
-TGT-1001,2025-07-01,XYZ-999,Gadget Z,1,40.00,0.00,2.80,0.00,MN,4.80,18.00
-TGT-1002,2025-07-03,ABC-123,Widget A,1,25.00,5.00,2.50,0.00,CA,3.00,8.50
-TGT-1003,2025-07-04,LMN-456,Thing Q,3,15.00,0.00,3.38,0.00,NY,5.40,6.00
-TGT-1004,2025-07-05,XYZ-999,Gadget Z,1,40.00,0.00,3.20,40.00,TX,4.80,18.00`;
-        const rows = parseCSV(sample);
-        allLines = normalizeCsvRows(rows, Number(ls.get(LS_FEE, 0.12)), cogsOverrides);
-        update();
-      })();
-    </script>
-  </body>
+  const k=sortState.key, dir=sortState.dir;
+  byGroup.sort((a,b)=>{ const av=(k==='key'? String(a[k]).toLowerCase():+a[k]); const bv=(k==='key'? String(b[k]).toLowerCase():+b[k]); if(av<bv) return dir==='asc'?-1:1; if(av>bv) return dir==='asc'?1:-1; return 0; });
+}
+
+/* ---------------- KPIs ---------------- */
+function sumRange(from,to){
+  const f=new Date(from.getFullYear(),from.getMonth(),from.getDate(),0,0,0);
+  const t=new Date(to.getFullYear(),to.getMonth(),to.getDate(),23,59,59);
+  const feePct=Number($('#feePct')?.value||0), cogsPct=Number($('#cogsPct')?.value||0);
+  let sales=0,units=0,profit=0,denom=0; const ordersSet=new Set();
+
+  orders.forEach(r=>{
+    if(r.date<f||r.date>t) return;
+    if(globalSelectedSkus.size && !globalSelectedSkus.has(r.sku)) return;
+
+    const netSales = r.gross;
+    const fee = netSales * feePct;
+    const discount = r.discount;
+    const ovr = cogsOverrides[r.sku];
+    const cogs = ovr ? (ovr.type==='perUnit' ? (ovr.value*r.qty) : (netSales*ovr.value)) : (netSales*cogsPct);
+
+    sales += netSales;
+    units += r.qty;
+    ordersSet.add(r.order||r.date);
+    profit += netSales - fee - discount - cogs - r.shippingCost;
+    denom += netSales;
+  });
+
+  return {sales,units,orders:ordersSet.size,profit,marginPct:denom? (profit/denom*100):0};
+}
+function labelRange(from,to){ return from.toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'})+' — '+to.toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'}); }
+function saveBoxes(){ localStorage.setItem(LS_BOXES, JSON.stringify(kpiBoxes)); }
+function primaryRangeForDeck(){ return primaryRange(); }
+function addBox(){
+  let baseEnd; if(kpiBoxes.length){ baseEnd=new Date(kpiBoxes[kpiBoxes.length-1].from); baseEnd.setDate(baseEnd.getDate()-1); }
+  else { const {start}=primaryRangeForDeck(); baseEnd=new Date(start); baseEnd.setDate(baseEnd.getDate()-1); }
+  const start=new Date(baseEnd); start.setDate(start.getDate()-29);
+  const id=String(Date.now()+Math.random());
+  kpiBoxes.push({id,from:start.toISOString().slice(0,10),to:baseEnd.toISOString().slice(0,10),label:`Box ${String.fromCharCode(65+kpiBoxes.length)}`});
+  saveBoxes(); renderKPIDeck();
+}
+function removeBox(id){ kpiBoxes=kpiBoxes.filter(b=>b.id!==id); saveBoxes(); renderKPIDeck(); }
+function renderKPIDeck(){
+  const deck=$('#kpiDeck'); deck.innerHTML='';
+  const {start,end}=primaryRangeForDeck(); const k0=sumRange(start,end);
+  const p=document.createElement('div'); p.className='kpi-box theme-primary';
+  p.innerHTML=`<div class="kpi-title">Primary <span class="range">${labelRange(start,end)}</span></div>
+  <div class="kpi-grid">
+    <div class="kmini"><div class="label">Sales</div><div class="value">${fmtUSD(k0.sales)}</div></div>
+    <div class="kmini"><div class="label">Orders</div><div class="value">${k0.orders}</div></div>
+    <div class="kmini"><div class="label">Units</div><div class="value">${k0.units}</div></div>
+    <div class="kmini"><div class="label">Profit</div><div class="value">${fmtUSD(k0.profit)}</div></div>
+    <div class="kmini"><div class="label">Margin</div><div class="value">${(k0.marginPct||0).toFixed(2)}%</div></div>
+  </div>`;
+  deck.appendChild(p);
+
+  kpiBoxes.forEach((box,i)=>{
+    const from=new Date(box.from+'T00:00:00'); const to=new Date(box.to+'T23:59:59'); const k=sumRange(from,to);
+    const theme = i%3===0?'theme-A':(i%3===1?'theme-B':'theme-C');
+    const el=document.createElement('div'); el.className=`kpi-box ${theme}`;
+    el.innerHTML=`<div class="kpi-title">${box.label||('Box '+String.fromCharCode(65+i))} <span class="range">${labelRange(from,to)}</span></div>
+    <div class="row">
+      <input data-id="${box.id}" data-role="from" type="date" class="input" value="${box.from}">
+      <input data-id="${box.id}" data-role="to" type="date" class="input" value="${box.to}">
+      <input data-id="${box.id}" data-role="label" class="input" placeholder="Label" value="${box.label||''}" style="min-width:140px">
+      <button data-id="${box.id}" data-role="set" class="btn secondary" type="button">Set</button>
+      <button data-id="${box.id}" data-role="remove" class="btn danger" type="button">Remove</button>
+    </div>
+    <div class="kpi-grid">
+      <div class="kmini"><div class="label">Sales</div><div class="value">${fmtUSD(k.sales)}</div></div>
+      <div class="kmini"><div class="label">Orders</div><div class="value">${k.orders}</div></div>
+      <div class="kmini"><div class="label">Units</div><div class="value">${k.units}</div></div>
+      <div class="kmini"><div class="label">Profit</div><div class="value">${fmtUSD(k.profit)}</div></div>
+      <div class="kmini"><div class="label">Margin</div><div class="value">${(k.marginPct||0).toFixed(2)}%</div></div>
+    </div>`;
+    deck.appendChild(el);
+  });
+
+  deck.querySelectorAll('button[data-role="set"]').forEach(btn=>{
+    btn.onclick=()=>{ const id=btn.getAttribute('data-id');
+      const from=deck.querySelector(`input[data-id="${id}"][data-role="from"]`).value;
+      const to  =deck.querySelector(`input[data-id="${id}"][data-role="to"]`).value;
+      const label=deck.querySelector(`input[data-id="${id}"][data-role="label"]`).value||'Custom';
+      const box=kpiBoxes.find(b=>b.id===id); if(!box) return; box.from=from; box.to=to; box.label=label; saveBoxes(); renderKPIDeck();
+    };
+  });
+  deck.querySelectorAll('button[data-role="remove"]').forEach(btn=>{
+    btn.onclick=()=> removeBox(btn.getAttribute('data-id'));
+  });
+}
+
+/* ---------------- Charts ---------------- */
+let lastChart={mode:'none',labels:[],series:[],points:[],pad:44,maxY:1};
+function ensureCanvasSize(c){ const cw=c.parentElement.clientWidth||c.width||800; const ch=Math.max(320,Math.round(cw*0.42)); c.width=cw; c.height=ch; }
+function niceMax(v){ if(v<=0) return 1; const pow=Math.pow(10,Math.floor(Math.log10(v))); const n=v/pow; const m=n<=1?1:(n<=2?2:(n<=5?5:10)); return m*pow; }
+function drawAxes(ctx,w,h,pad,maxY){
+  ctx.strokeStyle='#d1d5db'; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(pad,pad); ctx.lineTo(pad,h-pad); ctx.lineTo(w-pad,h-pad); ctx.stroke();
+  ctx.fillStyle='#64748b'; ctx.font='12px system-ui'; const ticks=6;
+  for(let i=0;i<=ticks;i++){ const val=maxY*(i/ticks); const y=h-pad-(val/maxY)*(h-pad*2);
+    ctx.fillText((Math.round(val*100)/100).toLocaleString(),6,y+4);
+    ctx.strokeStyle='#eef2f7'; ctx.beginPath(); ctx.moveTo(pad,y); ctx.lineTo(w-pad,y); ctx.stroke();
+  }
+}
+function drawXAxisTicks(ctx, dates, w,h,pad){
+  if(!dates.length) return; const first=toDateSafe(dates[0]), last=toDateSafe(dates[dates.length-1]); if(!(first&&last)) return;
+  const spanDays=Math.max(1,Math.round((last-first)/86400000)); let step='day'; if(spanDays>35&&spanDays<=100) step='week'; else if(spanDays>100) step='month';
+  const toX=i=> pad + i*(w-pad*2)/Math.max(1,dates.length-1); ctx.fillStyle='#64748b'; ctx.font='12px system-ui'; ctx.textAlign='center';
+  const fmt=d=> step==='day'? d.toLocaleDateString(undefined,{month:'short',day:'numeric'}) : step==='week'? ('W'+getWeekNumber(d)) : d.toLocaleDateString(undefined,{month:'short',year:'2-digit'});
+  for(let i=0;i<dates.length;i++){ const d=toDateSafe(dates[i]); if(!d) continue;
+    if(i===0 || i===dates.length-1 || shouldMark(d,toDateSafe(dates[i-1]),step)){ const x=toX(i); ctx.fillText(fmt(d),x,h-8); }
+  }
+  function shouldMark(cur,prev,step){ if(!prev) return true; if(step==='day') return cur.getDate()!==prev.getDate();
+    if(step==='week') return getWeekNumber(cur)!==getWeekNumber(prev); const m=cur.getMonth(),pm=prev.getMonth(),y=cur.getFullYear(),py=prev.getFullYear(); return m!==pm||y!==py; }
+  function getWeekNumber(d){ const date=new Date(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate())); const day=date.getUTCDay()||7; date.setUTCDate(date.getUTCDate()+4-day);
+    const yearStart=new Date(Date.UTC(date.getUTCFullYear(),0,1)); return Math.ceil((((date-yearStart)/86400000)+1)/7); }
+}
+function drawEmpty(canvas,msg){ const ctx=canvas.getContext('2d'); ensureCanvasSize(canvas); const w=canvas.width,h=canvas.height; ctx.clearRect(0,0,w,h); ctx.fillStyle='#9ca3af'; ctx.font='14px system-ui'; ctx.textAlign='center'; ctx.fillText(msg,w/2,h/2); lastChart={mode:'none',labels:[],series:[],points:[]}; }
+function drawLine(canvas,labels,series){
+  const ctx=canvas.getContext('2d'); ensureCanvasSize(canvas); const w=canvas.width,h=canvas.height; ctx.clearRect(0,0,w,h);
+  if(!series.length) return drawEmpty(canvas,'No data'); const clean=series.map(v=>+(+v||0).toFixed(2)); const pad=44; const maxY=niceMax(Math.max(1,...clean));
+  drawAxes(ctx,w,h,pad,maxY); drawXAxisTicks(ctx,labels,w,h,pad);
+  const toX=i=> pad + i*(w-pad*2)/Math.max(1,labels.length-1); const toY=v=> h - pad - (v/maxY)*(h-pad*2);
+  ctx.strokeStyle='#2563eb'; ctx.lineWidth=2; ctx.beginPath(); const pts=[]; clean.forEach((v,i)=>{ const x=toX(i),y=toY(v); pts.push({x,y,val:v,i}); i?ctx.lineTo(x,y):ctx.moveTo(x,y); }); ctx.stroke();
+  lastChart={mode:'line',labels,series:clean,points:pts,pad,maxY};
+}
+function drawBar(canvas,labels,series){
+  const ctx=canvas.getContext('2d'); ensureCanvasSize(canvas); const w=canvas.width,h=canvas.height; ctx.clearRect(0,0,w,h);
+  if(!series.length) return drawEmpty(canvas,'No data'); const clean=series.map(v=>+(+v||0).toFixed(2)); const pad=44; const maxY=niceMax(Math.max(1,...clean));
+  drawAxes(ctx,w,h,pad,maxY); drawXAxisTicks(ctx,labels,w,h,pad);
+  const slot=(w-pad*2)/Math.max(1,clean.length); const bw=slot*0.7; const pts=[];
+  ctx.fillStyle='#2563eb'; clean.forEach((v,i)=>{ const x=pad+i*slot+(slot-bw)/2; const y=h - pad - (v/maxY)*(h-pad*2); ctx.fillRect(x,y,bw,(h-pad)-y); pts.push({x:x+bw/2,y,val:v,i}); });
+  lastChart={mode:'bar',labels,series:clean,points:pts,pad,maxY};
+}
+function drawPie(canvas,labels,values){
+  const ctx=canvas.getContext('2d'); ensureCanvasSize(canvas); const w=canvas.width,h=canvas.height; ctx.clearRect(0,0,w,h);
+  if(!values.length||values.every(v=>v===0)) return drawEmpty(canvas,'No data');
+  const cx=w/2,cy=h/2,r=Math.min(w,h)/2-18; const sum=values.reduce((s,v)=>s+Math.max(0,v),0)||1; let start=-Math.PI/2;
+  const colors=['#2563eb','#16a34a','#f59e0b','#ef4444','#a78bfa','#14b8a6','#f472b6','#22c55e','#06b6d4'];
+  values.forEach((v,i)=>{ const val=Math.max(0,v); const ang=(val/sum)*Math.PI*2; ctx.beginPath(); ctx.moveTo(cx,cy); ctx.arc(cx,cy,r,start,start+ang); ctx.closePath(); ctx.fillStyle=colors[i%colors.length]; ctx.fill(); start+=ang; });
+  ctx.fillStyle='#6b7280'; ctx.font='12px system-ui'; labels.slice(0,10).forEach((lb,i)=>{ ctx.fillStyle=colors[i%colors.length]; ctx.fillRect(10,10+i*16,10,10); ctx.fillStyle='#6b7280'; ctx.fillText(lb,26,19+i*16); });
+  lastChart={mode:'pie',labels,series:values,points:[]};
+}
+function renderCharts(){
+  const canvas=$('#viz'), overlay=$('#vizOverlay');
+  if(!canvas) return; const mode=($('#chartMode')?.value)||'line';
+  const metric=($('#metric')?.value)||'sales';
+  if(!byDate.length||!byGroup.length){ applyFilter(); aggregate(); }
+  if(mode==='pie'){ const top=byGroup.slice().sort((a,b)=>b.gp-a.gp).slice(0,10); drawPie(canvas, top.map(x=>x.key), top.map(x=>x.gp)); overlay.width=canvas.width; overlay.height=canvas.height; $('#chartRange').textContent=rangeLabelFromByDate(); return; }
+  const labels=byDate.map(x=>x.date); const series=byDate.map(x=> metric==='sales'? x.sales : (metric==='profit'? x.profit : x.units));
+  const first=labels[0], last=labels[labels.length-1]; $('#chartRange').textContent = labels.length? (first.toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'})+' — '+last.toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'})) : '';
+  if(mode==='bar') drawBar(canvas,labels,series); else drawLine(canvas,labels,series);
+  overlay.width=canvas.width; overlay.height=canvas.height;
+}
+(function hover(){ const base=$('#viz'), overlay=$('#vizOverlay'); const ctxO=overlay.getContext('2d');
+  function clear(){ ctxO.clearRect(0,0,overlay.width,overlay.height); }
+  base.addEventListener('mousemove',(e)=>{ if(!(lastChart.mode==='line'||lastChart.mode==='bar')) return clear(); if(!lastChart.points.length) return clear();
+    const rect=base.getBoundingClientRect(); const x=e.clientX-rect.left; let best=null, bestDist=1e9;
+    lastChart.points.forEach(p=>{ const d=Math.abs(p.x-x); if(d<bestDist){ bestDist=d; best=p; } });
+    if(!best) return clear(); ctxO.clearRect(0,0,overlay.width,overlay.height);
+    ctxO.strokeStyle='rgba(37,99,235,.35)'; ctxO.lineWidth=1; ctxO.beginPath(); ctxO.moveTo(best.x,lastChart.pad); ctxO.lineTo(best.x,overlay.height-lastChart.pad); ctxO.stroke();
+    ctxO.fillStyle='#2563eb'; ctxO.beginPath(); ctxO.arc(best.x,best.y,4,0,Math.PI*2); ctxO.fill();
+    const date = toDateSafe(lastChart.labels[best.i])?.toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'}) || '';
+    const metric=$('#metric').value; const v=lastChart.series[best.i]; const valStr = metric==='units'? v.toLocaleString() : fmtUSD(v);
+    const label=`${date} • ${metric}: ${valStr}`; const pad=6; ctxO.font='12px system-ui';
+    const tw=ctxO.measureText(label).width; const bx=Math.min(Math.max(4, best.x - tw/2 - pad), overlay.width - tw - pad -4);
+    const ty=Math.max(16, best.y-16); ctxO.fillStyle='rgba(255,255,255,.92)'; ctxO.fillRect(bx,ty-14,tw+pad*2,18); ctxO.strokeStyle='rgba(0,0,0,.08)'; ctxO.strokeRect(bx,ty-14,tw+pad*2,18); ctxO.fillStyle='#111827'; ctxO.fillText(label,bx+pad,ty);
+  });
+  base.addEventListener('mouseleave', clear);
+})();
+
+/* ---------------- Table ---------------- */
+function rangeLabelFromByDate(){
+  if(!byDate.length) return '';
+  const a=byDate[0].date, b=byDate[byDate.length-1].date;
+  return a.toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'})+' — '+b.toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'});
+}
+function renderTable(){
+  const head=$('#thead'); head.innerHTML='';
+  const cols = (groupBy==='parent')
+    ? [['key','Parent'],['units','Units'],['sales','Net Sales'],['shippingCost','Shipping Cost'],['feesRedCard','Fees\\Red Card'],['cogs','COGS'],['gp','Profit'],['margin','Margin %']]
+    : [['key','SKU'],   ['units','Units'],['sales','Net Sales'],['shippingCost','Shipping Cost'],['feesRedCard','Fees\\Red Card'],['cogs','COGS'],['gp','Profit'],['margin','Margin %']];
+  cols.forEach(([k,label])=>{
+    const th=document.createElement('th'); th.textContent=label;
+    th.addEventListener('click', ()=>{ if(sortState.key===k) sortState.dir = sortState.dir==='desc'?'asc':'desc'; else { sortState.key=k; sortState.dir='desc'; } aggregate(); renderTable(); renderCharts(); });
+    if(sortState.key===k) th.classList.add(sortState.dir==='desc'?'sort-desc':'sort-asc');
+    head.appendChild(th);
+  });
+  const body=$('#tbody'); body.innerHTML='';
+  byGroup.forEach(r=>{
+    const tr=document.createElement('tr');
+    const cells=[r.key, r.units, fmtUSD(r.sales), fmtUSD(r.shippingCost), fmtUSD(r.feesRedCard), fmtUSD(r.cogs), fmtUSD(r.gp), (r.margin||0).toFixed(2)];
+    cells.forEach(v=>{ const td=document.createElement('td'); td.textContent=v; tr.appendChild(td); });
+    body.appendChild(tr);
+  });
+  $('#rowsCount').textContent = byGroup.length+' rows';
+  $('#tableTitle').textContent = groupBy==='parent' ? 'By Parent' : 'By SKU';
+  $('#tableRange').textContent = rangeLabelFromByDate();
+}
+
+/* ---------------- Files + COGS ---------------- */
+function persistOrders(){ localStorage.setItem(LS_ORDERS, JSON.stringify(orders.map(o=>({...o, date:o.date.toISOString()})))); }
+function renderFiles(){
+  const list=$('#filesList');
+  const cogsList=$('#cogsFilesList');
+  const q=($('#fileSearch').value||'').toLowerCase();
+
+  // Orders
+  list.innerHTML='';
+  fileManifest
+    .filter(f=>!q || f.name.toLowerCase().includes(q))
+    .forEach(f=>{
+      const used = orders.filter(o=>o.fileId===f.id).length;
+      const when = f.addedAt ? new Date(f.addedAt).toLocaleString() : '';
+      const row=document.createElement('div'); row.className='file-row';
+      row.innerHTML=`<div><div>${f.name}</div><div class="muted">${used} rows • ${when}</div></div>
+                     <button type="button" class="btn secondary" data-role="remove-file" data-id="${f.id}">Remove</button>`;
+      list.appendChild(row);
+    });
+
+  // COGS
+  if(cogsList){
+    cogsList.innerHTML='';
+    cogsFileManifest
+      .filter(f=>!q || f.name.toLowerCase().includes(q))
+      .forEach(f=>{
+        const when = f.addedAt ? new Date(f.addedAt).toLocaleString() : '';
+        const row=document.createElement('div'); row.className='file-row';
+        row.innerHTML=`<div><div>${f.name}</div><div class="muted">${f.rows} overrides • ${when}</div></div>`;
+        cogsList.appendChild(row);
+      });
+  }
+}
+function removeFileAndRows(fileId){
+  if(!confirm('Remove this file and its rows?')) return;
+  orders = orders.filter(r=> r.fileId!==fileId);
+  fileManifest = fileManifest.filter(f=> f.id!==fileId);
+  persistOrders(); localStorage.setItem(LS_FILES, JSON.stringify(fileManifest));
+  renderFiles(); recompute();
+}
+function renderCogs(){
+  const body=$('#cogsBody'); body.innerHTML='';
+  const rows=Object.entries(cogsOverrides).sort((a,b)=>a[0].localeCompare(b[0]));
+  rows.forEach(([sku,cfg])=>{
+    const tr=document.createElement('tr');
+    const disp = cfg.type==='percentRevenue'? (Number(cfg.value)*100).toFixed(2)+'%' : cfg.value;
+    [sku,cfg.type,disp].forEach(v=>{ const td=document.createElement('td'); td.textContent=String(v); tr.appendChild(td); });
+    const td=document.createElement('td'); const del=document.createElement('button'); del.className='btn danger'; del.textContent='Delete';
+    del.onclick=()=>{ delete cogsOverrides[sku]; localStorage.setItem(LS_COGS, JSON.stringify(cogsOverrides)); renderCogs(); recompute(); };
+    td.appendChild(del); tr.appendChild(td); body.appendChild(tr);
+  });
+  $('#cogsCount').textContent = rows.length+' overrides';
+}
+
+/* ---------------- Wire up UI ---------------- */
+$('#apply').addEventListener('click', recompute);
+$('#groupBy').addEventListener('change', e=>{ groupBy=e.target.value; recompute(); });
+$('#metric').addEventListener('change', renderCharts);
+$('#chartMode').addEventListener('change', renderCharts);
+$('#addKpiBox').addEventListener('click', addBox);
+$('#fileSearch').addEventListener('input', renderFiles);
+document.addEventListener('click', (e)=>{ const btn=e.target.closest('button[data-role="remove-file"]'); if(btn) removeFileAndRows(btn.getAttribute('data-id')); });
+window.addEventListener('resize', renderCharts);
+
+/* Reset buttons (dates & global SKUs) */
+document.getElementById('resetDatesBtn').addEventListener('click', ()=>{
+  const {start,end}=defaultDateRange();
+  document.getElementById('dateFrom').value = start.toISOString().slice(0,10);
+  document.getElementById('dateTo').value   = end.toISOString().slice(0,10);
+  recompute();
+});
+document.getElementById('resetSkusBtn').addEventListener('click', ()=>{
+  globalSelectedSkus.clear();
+  persistGlobalSkus();
+  window.__refreshGlobalSkuSummary?.();
+  recompute();
+});
+
+// Fee/COGS Apply button
+$('#applyFees').addEventListener('click', ()=>{
+  localStorage.setItem(LS_FEE, Number($('#feePct').value||0));
+  localStorage.setItem(LS_COGSP, Number($('#cogsPct').value||0));
+  recompute();
+  const s=$('#status'); if(s) s.textContent='Settings applied';
+});
+
+// Defaults from storage
+(function(){
+  const fee=Number(localStorage.getItem(LS_FEE));
+  const cg =Number(localStorage.getItem(LS_COGSP));
+  if(!Number.isNaN(fee)) $('#feePct').value=fee;
+  if(!Number.isNaN(cg))  $('#cogsPct').value=cg;
+})();
+
+/* COGS Save */
+$('#saveCogsBtn').addEventListener('click', ()=>{
+  const sku=$('#cogsSku').value.trim();
+  const type=$('#cogsType').value;
+  let value=Number($('#cogsValue').value||0);
+  if(!sku) return alert('SKU required');
+  if(type==='percentRevenue' && value>1) value=value/100;
+  cogsOverrides[sku]={type,value};
+  localStorage.setItem(LS_COGS, JSON.stringify(cogsOverrides));
+  renderCogs(); recompute();
+});
+
+/* COGS CSV import (more tolerant) */
+$('#cogsCsv').addEventListener('change', async (e)=>{
+  const f=e.target.files && e.target.files[0]; if(!f) return;
+  const text=await f.text(); const arr=parseCSV(text);
+  const [head,...rows]=arr;
+
+  function norm(h){
+    return String(h||'').toLowerCase().replace(/[^a-z0-9% ]/g,'').replace(/\s+/g,' ').trim();
+  }
+  const m=Object.fromEntries((head||[]).map((h,i)=>[norm(h),i]));
+
+  const idxSku = m['sku'];
+  const idxPer = m['per unit'] ?? m['per unit $'] ?? m['perunit'] ?? m['unit cost'] ?? m['cost per unit'];
+  const idxPct = m['percent revenue'] ?? m['percent of revenue'] ?? m['% of revenue'] ?? m['percent'] ?? m['cogs %'] ?? m['cogs percent'];
+
+  if(typeof idxSku!=='number' || (typeof idxPer!=='number' && typeof idxPct!=='number')){
+    alert('COGS CSV needs "SKU" and either "Per Unit" or "Percent Revenue" (various spellings accepted).');
+    e.target.value = '';
+    return;
+  }
+
+  let count=0;
+  rows.forEach(r=>{
+    if(!r||!r.length) return;
+    const sku=String(r[idxSku]||'').trim(); if(!sku) return;
+    if(typeof idxPer==='number' && r[idxPer]!==undefined && r[idxPer]!==''){
+      cogsOverrides[sku]={type:'perUnit', value: Number(r[idxPer])||0}; count++; return;
+    }
+    if(typeof idxPct==='number' && r[idxPct]!==undefined && r[idxPct]!==''){
+      let v=Number(r[idxPct])||0; if(v>1) v=v/100;
+      cogsOverrides[sku]={type:'percentRevenue', value: v}; count++; return;
+    }
+  });
+  localStorage.setItem(LS_COGS, JSON.stringify(cogsOverrides));
+
+  // NEW: record COGS file manifest + show in settings
+  const fid = String(Date.now());
+  cogsFileManifest.push({ id: fid, name: f.name, rows: count, addedAt: new Date().toISOString() });
+  localStorage.setItem(LS_COGS_FILES, JSON.stringify(cogsFileManifest));
+
+  $('#status').textContent = `Imported COGS for ${count} SKUs from ${f.name}`;
+  renderCogs(); renderFiles(); recompute();
+
+  // Allow re-upload of same filename
+  e.target.value = '';
+});
+
+/* Orders CSV import / clear all / demo */
+const statusEl=$('#status');
+$('#csvFile').addEventListener('change', async (e)=>{
+  const files=e.target.files; if(!files||!files.length) return;
+  const keys=new Set(orders.map(keyOf)); let added=0; const now=Date.now();
+  for(let i=0;i<files.length;i++){
+    const f=files[i]; const id=String(now+i); const text=await f.text(); const arr=parseCSV(text); const rows=normalizeOrders(arr,id);
+    let used=0;
+    for(const r of rows){
+      const k=keyOf(r);
+      if (!keys.has(k)) { orders.push(r); keys.add(k); added++; used++; }
+      // else duplicate -> skip (first-seen wins)
+    }
+    fileManifest.push({id,name:f.name,rows:used,addedAt:new Date().toISOString()});
+  }
+  persistOrders(); localStorage.setItem(LS_FILES, JSON.stringify(fileManifest));
+  statusEl.textContent = `Imported ${added} new rows. Total: ${orders.length}.`;
+  window.__refreshGlobalSkuSummary?.(); renderFiles(); setInputsToDefaultIfEmpty(); recompute();
+
+  // Allow re-upload of same filename(s)
+  e.target.value = '';
+});
+$('#clearAll').addEventListener('click', ()=>{
+  if(!confirm('This will remove ALL imported CSVs and rows. Continue?')) return;
+  orders=[]; fileManifest=[]; localStorage.removeItem(LS_ORDERS); localStorage.removeItem(LS_FILES);
+  statusEl.textContent='All data cleared'; renderFiles(); setInputsToDefaultIfEmpty(); recompute();
+});
+$('#dedupeNow').addEventListener('click', ()=>{
+  if(!confirm('De-duplicate by Order Number + SKU (first-seen wins)?')) return;
+  const seen=new Set(); const unique=[];
+  for(const r of orders){ const k=keyOf(r); if(!seen.has(k)){ seen.add(k); unique.push(r); } }
+  const removed=orders.length-unique.length; orders=unique; persistOrders(); renderFiles(); recompute();
+  statusEl.textContent = `De-duplicated: removed ${removed} duplicate rows.`;
+});
+$('#loadDemo').addEventListener('click', ()=>{
+  const base=new Date(); base.setDate(base.getDate()-29); const data=[];
+  for(let i=0;i<30;i++){
+    const d=new Date(base.getFullYear(),base.getMonth(),base.getDate()+i);
+    // Date, Order Number, Store SKU, Quantity, Price, Shipping Cost, Sales Tax, Discount (discount positive means deduction)
+    data.push([`${d.getMonth()+1}/${d.getDate()}/${d.getFullYear()}`,'ORD-A'+i,'SKU-A',1,20,0,0,0]);
+    data.push([`${d.getMonth()+1}/${d.getDate()}/${d.getFullYear()}`,'ORD-B'+i,'SKU-B',2,15,1.5,0,1.0]);
+    if(i%3===0) data.push([`${d.getMonth()+1}/${d.getDate()}/${d.getFullYear()}`,'ORD-C'+i,'SKU-C',1,25,2.0,0,3.0]);
+  }
+  const arr=[["Date","Order Number","Store SKU","Quantity","Price","Shipping Cost","Sales Tax","Discount"],...data];
+  const fid=String(Date.now()); const rows=normalizeOrders(arr,fid); orders=rows; fileManifest=[{id:fid,name:'Demo-Orders.csv',rows:rows.length,addedAt:new Date().toISOString()}];
+  persistOrders(); localStorage.setItem(LS_FILES, JSON.stringify(fileManifest));
+  statusEl.textContent=`Demo data loaded (${rows.length} rows)`; window.__refreshGlobalSkuSummary?.(); renderFiles(); setInputsToDefaultIfEmpty(); recompute();
+
+  // Demo COGS — A: $5/unit, B: 10% revenue, C: $6/unit
+  cogsOverrides = { "SKU-A": {type:"perUnit", value:5}, "SKU-B": {type:"percentRevenue", value:0.10}, "SKU-C": {type:"perUnit", value:6} };
+  localStorage.setItem(LS_COGS, JSON.stringify(cogsOverrides));
+  renderCogs(); recompute();
+});
+
+/* ---------------- COGS SKU dropdown (search + click) ---------------- */
+(function buildCogsSkuMs(){
+  const input = $('#cogsSku');
+  const panel = $('#cogsSkuDd');
+  const root  = $('#cogsSkuMs');
+  if(!input || !panel || !root) return;
+
+  function knownSkus(){
+    const s=new Set(orders.map(o=>o.sku));
+    return Array.from(s).sort();
+  }
+  function render(){
+    const q=(input.value||'').toLowerCase();
+    const list=knownSkus().filter(s=>!q || s.toLowerCase().includes(q));
+    panel.innerHTML='';
+    if(list.length===0){
+      const div=document.createElement('div'); div.className='item'; div.textContent='No matches';
+      panel.appendChild(div); panel.classList.add('open'); return;
+    }
+    list.forEach(sku=>{
+      const row=document.createElement('div'); row.className='item'; row.textContent=sku;
+      row.addEventListener('click', ()=>{
+        input.value = sku;
+        panel.classList.remove('open');
+      });
+      panel.appendChild(row);
+    });
+    panel.classList.add('open');
+  }
+  input.addEventListener('focus', render);
+  input.addEventListener('input', render);
+  input.addEventListener('click', render);
+  document.addEventListener('click', (e)=>{ if(!root.contains(e.target)) panel.classList.remove('open'); });
+})();
+
+/* ---------------- Pipeline + Init ---------------- */
+function recompute(){ applyFilter(); aggregate(); renderKPIDeck(); renderCharts(); renderTable(); }
+renderFiles(); renderCogs(); setInputsToDefaultIfEmpty(); recompute();
+</script>
+</body>
 </html>
